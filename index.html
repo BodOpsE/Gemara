@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#2C1E12" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Daf HaYomi — Gemara Vocabulary</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Frank+Ruhl+Libre:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'EB Garamond', serif; background: #1E1610; overflow-x: hidden; }
+    #root { min-height: 100vh; }
+    @keyframes glow { 0%,100% { box-shadow: 0 4px 16px rgba(164,118,78,0.3); } 50% { box-shadow: 0 4px 28px rgba(196,149,106,0.5); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    input { -webkit-appearance: none; appearance: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ═══════════════════════════════════════════════════
+// STORAGE
+// ═══════════════════════════════════════════════════
+const storage = {
+  get(key) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e) { return null; } },
+  set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} },
+};
+
+// ═══════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════
+function stripNekudot(t) { return t.replace(/[\u0591-\u05C7]/g, ""); }
+function fuzzyMatch(input, correct) {
+  const norm = s => s.toLowerCase().trim().replace(/[^a-z0-9 ]/g,"").replace(/\s+/g," ");
+  const a = norm(input), b = norm(correct);
+  if (a===b) return "exact";
+  for (const alt of b.split("/").map(s=>norm(s.trim()))) { if (a===alt) return "exact"; }
+  const skip=["the","a","an","to","of","is","it","in","for","he","she","one","who"];
+  const ac=a.split(" ").filter(w=>!skip.includes(w)).join(" ");
+  const bc=b.split(" ").filter(w=>!skip.includes(w)).join(" ");
+  if(ac&&ac===bc) return "close";
+  const bw=bc.split(" "),aw=ac.split(" ");
+  if(bw.length>0&&bw.every(w=>aw.includes(w))) return "close";
+  if(aw.length>0&&aw.every(w=>bw.includes(w))&&aw.length>=bw.length*0.5) return "close";
+  if(lev(a,b)<=2&&b.length>3) return "close";
+  return "wrong";
+}
+function lev(a,b){const m=a.length,n=b.length,dp=Array.from({length:m+1},()=>Array(n+1).fill(0));for(let i=0;i<=m;i++)dp[i][0]=i;for(let j=0;j<=n;j++)dp[0][j]=j;for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);return dp[m][n];}
+function todayKey(){return new Date().toISOString().slice(0,10);}
+function daysBetween(d1,d2){return Math.floor((new Date(d2)-new Date(d1))/86400000);}
+
+// ═══════════════════════════════════════════════════
+// VOCABULARY
+// ═══════════════════════════════════════════════════
+const TRACKS = {
+  gemara_structural:{id:"gemara_structural",name:"Gemara: Structure",desc:"Logic & flow words",icon:"🏗️",color:"#C4956A"},
+  gemara_content:{id:"gemara_content",name:"Gemara: AZ Content",desc:"Avodah Zarah terms",icon:"📖",color:"#8B6F4E"},
+  rashi:{id:"rashi",name:"Rashi",desc:"Rashi's shorthand",icon:"🔍",color:"#6B8E7B"},
+  tosfos:{id:"tosfos",name:"Tosfos",desc:"Analytical vocabulary",icon:"⚖️",color:"#7B7FA3"},
+};
+const VOCAB = {
+  gemara_structural: [
+    {hebrew:"אָמַר",transliteration:"amar",english:"said",cat:"speech"},
+    {hebrew:"תָּנָא",transliteration:"tana",english:"a Tanna taught",cat:"teaching"},
+    {hebrew:"תְּנַן",transliteration:"t'nan",english:"we learned in a Mishnah",cat:"teaching"},
+    {hebrew:"תַּנְיָא",transliteration:"tanya",english:"it was taught in a Baraisa",cat:"teaching"},
+    {hebrew:"בָּעֵי",transliteration:"ba'i",english:"asks / inquires",cat:"questioning"},
+    {hebrew:"מַאי",transliteration:"mai",english:"what?",cat:"questioning"},
+    {hebrew:"הֵיכִי",transliteration:"heichi",english:"how?",cat:"questioning"},
+    {hebrew:"אֶלָּא",transliteration:"ela",english:"rather / but rather",cat:"logic"},
+    {hebrew:"וְהָא",transliteration:"v'ha",english:"but isn't it?",cat:"logic"},
+    {hebrew:"קַשְׁיָא",transliteration:"kashya",english:"difficulty / contradiction",cat:"logic"},
+    {hebrew:"תֵּיקוּ",transliteration:"teiku",english:"unresolved / let it stand",cat:"resolution"},
+    {hebrew:"תָּנוּ רַבָּנָן",transliteration:"tanu rabbanan",english:"the Rabbis taught",cat:"teaching"},
+    {hebrew:"אִיתְּמַר",transliteration:"itmar",english:"it was stated",cat:"speech"},
+    {hebrew:"מִנָּא הָנֵי מִילֵּי",transliteration:"mina hanei milei",english:"from where are these words derived?",cat:"questioning"},
+    {hebrew:"שְׁמַע מִינַּהּ",transliteration:"shma minah",english:"conclude from this",cat:"resolution"},
+    {hebrew:"פְּשִׁיטָא",transliteration:"peshita",english:"it's obvious!",cat:"logic"},
+    {hebrew:"מַתְנִיתִין",transliteration:"matnitin",english:"our Mishnah",cat:"teaching"},
+    {hebrew:"לֵימָא",transliteration:"leima",english:"shall we say?",cat:"questioning"},
+    {hebrew:"מַהוּ",transliteration:"mahu",english:"what is the law?",cat:"questioning"},
+    {hebrew:"אִי",transliteration:"ee",english:"if",cat:"logic"},
+    {hebrew:"דִּילְמָא",transliteration:"dilma",english:"perhaps",cat:"logic"},
+    {hebrew:"הָכָא",transliteration:"hacha",english:"here",cat:"reference"},
+    {hebrew:"הָתָם",transliteration:"hasam",english:"there",cat:"reference"},
+    {hebrew:"מִדְּאוֹרַיְתָא",transliteration:"mid'oraisa",english:"from the Torah / Biblical",cat:"source"},
+    {hebrew:"מִדְּרַבָּנָן",transliteration:"mid'rabbanan",english:"from the Rabbis / Rabbinic",cat:"source"},
+    {hebrew:"לָא",transliteration:"la",english:"no / not",cat:"logic"},
+    {hebrew:"אִין",transliteration:"in",english:"yes",cat:"logic"},
+    {hebrew:"נָמֵי",transliteration:"nami",english:"also",cat:"logic"},
+    {hebrew:"הָכִי",transliteration:"hachi",english:"so / thus",cat:"reference"},
+    {hebrew:"מַאן",transliteration:"man",english:"who?",cat:"questioning"},
+    {hebrew:"דְּאָמַר",transliteration:"d'amar",english:"who says / that said",cat:"speech"},
+    {hebrew:"רַב",transliteration:"rav",english:"Rav / master",cat:"titles"},
+    {hebrew:"אֲמַר לֵיהּ",transliteration:"amar lei",english:"he said to him",cat:"speech"},
+    {hebrew:"סְבָרָא",transliteration:"svara",english:"reasoning / logic",cat:"logic"},
+    {hebrew:"הַיְינוּ",transliteration:"haynu",english:"that is / meaning",cat:"logic"},
+    {hebrew:"מַאי שְׁנָא",transliteration:"mai shna",english:"what is different?",cat:"questioning"},
+    {hebrew:"לְעוֹלָם",transliteration:"l'olam",english:"actually / in truth",cat:"logic"},
+    {hebrew:"מַתְקֵיף",transliteration:"maskif",english:"objects / challenges",cat:"logic"},
+    {hebrew:"מֵיתִיבִי",transliteration:"meisivi",english:"they challenged from a Baraisa",cat:"logic"},
+    {hebrew:"תָּא שְׁמַע",transliteration:"ta shma",english:"come and hear / proof",cat:"logic"},
+    {hebrew:"אִיכָּא",transliteration:"ika",english:"there is",cat:"reference"},
+    {hebrew:"לֵיכָּא",transliteration:"leika",english:"there is not",cat:"reference"},
+    {hebrew:"צְרִיכָא",transliteration:"tzricha",english:"it is necessary",cat:"logic"},
+    {hebrew:"מְנָלָן",transliteration:"m'nalan",english:"from where do we know?",cat:"questioning"},
+    {hebrew:"דִּכְתִיב",transliteration:"dichtiv",english:"as it is written",cat:"source"},
+    {hebrew:"וְכִי",transliteration:"v'chi",english:"and is it so?",cat:"questioning"},
+    {hebrew:"כְּדִתְנַן",transliteration:"k'dis'nan",english:"as we learned",cat:"teaching"},
+    {hebrew:"אֲפִילּוּ",transliteration:"afilu",english:"even",cat:"logic"},
+    {hebrew:"מִיהוּ",transliteration:"mihu",english:"however / but",cat:"logic"},
+    {hebrew:"הָנֵי מִילֵּי",transliteration:"hanei milei",english:"these words / this applies",cat:"logic"},
+  ],
+  gemara_content: [
+    {hebrew:"יַיִן",transliteration:"yayin",english:"wine",cat:"AZ"},
+    {hebrew:"יֵין נֶסֶךְ",transliteration:"yein nesech",english:"wine of libation / idolatry",cat:"AZ"},
+    {hebrew:"סְתַם יֵינָם",transliteration:"stam yeinam",english:"ordinary gentile wine",cat:"AZ"},
+    {hebrew:"עֲבוֹדָה זָרָה",transliteration:"avodah zarah",english:"idol worship / idolatry",cat:"AZ"},
+    {hebrew:"גּוֹי",transliteration:"goy",english:"non-Jew / gentile",cat:"people"},
+    {hebrew:"יִשְׂרָאֵל",transliteration:"yisrael",english:"a Jew / Israel",cat:"people"},
+    {hebrew:"נָגַע",transliteration:"naga",english:"touched",cat:"action"},
+    {hebrew:"אָסוּר",transliteration:"asur",english:"forbidden",cat:"halacha"},
+    {hebrew:"מוּתָּר",transliteration:"mutar",english:"permitted",cat:"halacha"},
+    {hebrew:"הֲנָאָה",transliteration:"hana'ah",english:"benefit / pleasure",cat:"halacha"},
+    {hebrew:"בְּהֲנָאָה",transliteration:"b'hana'ah",english:"in benefit",cat:"halacha"},
+    {hebrew:"שְׁתִיָּה",transliteration:"shtiya",english:"drinking",cat:"action"},
+    {hebrew:"דָּרַךְ",transliteration:"darach",english:"tread / press grapes",cat:"action"},
+    {hebrew:"שׁוֹכֵר",transliteration:"socher",english:"one who rents / hires",cat:"people"},
+    {hebrew:"פּוֹעֵל",transliteration:"po'el",english:"worker / laborer",cat:"people"},
+    {hebrew:"גַּת",transliteration:"gas",english:"winepress",cat:"objects"},
+    {hebrew:"חָבִית",transliteration:"chavis",english:"barrel",cat:"objects"},
+    {hebrew:"כֶּלִי",transliteration:"kli",english:"vessel / utensil",cat:"objects"},
+    {hebrew:"טָמֵא",transliteration:"tamei",english:"impure / contaminated",cat:"halacha"},
+    {hebrew:"טָהוֹר",transliteration:"tahor",english:"pure / clean",cat:"halacha"},
+    {hebrew:"נִיצוֹק",transliteration:"nitzok",english:"poured stream / connected flow",cat:"AZ"},
+    {hebrew:"מָשַׁךְ",transliteration:"mashach",english:"pulled / drew",cat:"action"},
+    {hebrew:"שָׁפַךְ",transliteration:"shafach",english:"poured",cat:"action"},
+    {hebrew:"שָׁכַר",transliteration:"sachar",english:"hired / rented",cat:"action"},
+    {hebrew:"דָּמִים",transliteration:"damim",english:"money / payment",cat:"commerce"},
+    {hebrew:"קָנָה",transliteration:"kanah",english:"acquired / bought",cat:"commerce"},
+    {hebrew:"מָכַר",transliteration:"machar",english:"sold",cat:"commerce"},
+    {hebrew:"חוֹמֶר",transliteration:"chomer",english:"stringency",cat:"halacha"},
+    {hebrew:"קוּלָא",transliteration:"kula",english:"leniency",cat:"halacha"},
+    {hebrew:"לְכַתְּחִילָה",transliteration:"l'chatchila",english:"from the outset / ideally",cat:"halacha"},
+    {hebrew:"בְּדִיעֲבַד",transliteration:"b'di'eved",english:"after the fact",cat:"halacha"},
+    {hebrew:"חֲמָרָא",transliteration:"chamra",english:"wine (Aramaic)",cat:"AZ"},
+    {hebrew:"דִּינָא",transliteration:"dina",english:"law / judgment",cat:"halacha"},
+    {hebrew:"מַמּוֹנָא",transliteration:"mamona",english:"money / property",cat:"commerce"},
+    {hebrew:"שְׂכָרוֹ",transliteration:"s'charo",english:"his wages / rental fee",cat:"commerce"},
+    {hebrew:"זוּזֵי",transliteration:"zuzei",english:"coins / money",cat:"commerce"},
+    {hebrew:"שֶׁבַח",transliteration:"shevach",english:"improvement / enhancement",cat:"commerce"},
+    {hebrew:"הַכְשֵׁר",transliteration:"hechsher",english:"preparation / enabling",cat:"halacha"},
+    {hebrew:"בִּיתָא",transliteration:"beisa",english:"house (Aramaic)",cat:"objects"},
+    {hebrew:"מֶכֶר",transliteration:"mecher",english:"sale",cat:"commerce"},
+  ],
+  rashi: [
+    {hebrew:"כְּלוֹמַר",transliteration:"k'lomar",english:"that is to say",cat:"explanation"},
+    {hebrew:"פֵּירוּשׁ",transliteration:"peirush",english:"explanation / meaning",cat:"explanation"},
+    {hebrew:"דְּהַיְינוּ",transliteration:"d'haynu",english:"that is / meaning",cat:"explanation"},
+    {hebrew:"עַל כָּרְחֲךָ",transliteration:"al korchach",english:"you are forced to say",cat:"logic"},
+    {hebrew:"לָאו",transliteration:"lav",english:"is it not? / no",cat:"logic"},
+    {hebrew:"הָא",transliteration:"ha",english:"this / behold",cat:"reference"},
+    {hebrew:"שֶׁהֲרֵי",transliteration:"sheharei",english:"for behold / since",cat:"logic"},
+    {hebrew:"לִשְׁנָא אַחֲרִינָא",transliteration:"lishna acharina",english:"another version / wording",cat:"structure"},
+    {hebrew:"נִרְאֶה לִי",transliteration:"nireh li",english:"it seems to me",cat:"opinion"},
+    {hebrew:"וְיֵשׁ לוֹמַר",transliteration:"v'yesh lomar",english:"and one can say",cat:"opinion"},
+    {hebrew:"קָאֵי",transliteration:"ka'i",english:"stands / refers to",cat:"reference"},
+    {hebrew:"לְפִי שֶׁ",transliteration:"l'fi she",english:"because",cat:"logic"},
+    {hebrew:"דַּוְקָא",transliteration:"davka",english:"specifically / precisely",cat:"logic"},
+    {hebrew:"לָאו דַּוְקָא",transliteration:"lav davka",english:"not specifically / loosely",cat:"logic"},
+    {hebrew:"קָמַשְׁמַע לַן",transliteration:"ka mashma lan",english:"it teaches us",cat:"teaching"},
+    {hebrew:"מִשּׁוּם",transliteration:"mishum",english:"because of",cat:"logic"},
+    {hebrew:"כְּגוֹן",transliteration:"k'gon",english:"such as / for example",cat:"explanation"},
+    {hebrew:"וְעוֹד",transliteration:"v'od",english:"and furthermore",cat:"logic"},
+    {hebrew:"סֵיפָא",transliteration:"seifa",english:"the end of the Mishnah",cat:"structure"},
+    {hebrew:"רֵישָׁא",transliteration:"reisha",english:"the beginning of the Mishnah",cat:"structure"},
+    {hebrew:"מְתָרֵץ",transliteration:"m'taretz",english:"answers / resolves",cat:"logic"},
+    {hebrew:"בָּבָא",transliteration:"bava",english:"section / clause",cat:"structure"},
+    {hebrew:"עִנְיָן",transliteration:"inyan",english:"topic / matter",cat:"reference"},
+    {hebrew:"אוֹ",transliteration:"o",english:"or",cat:"logic"},
+    {hebrew:"עֵינֵיהֶם",transliteration:"eineihem",english:"their eyes (euphemism)",cat:"reference"},
+  ],
+  tosfos: [
+    {hebrew:"וְאִם תֹּאמַר",transliteration:"v'im tomar",english:"and if you will say",cat:"structure"},
+    {hebrew:"וְיֵשׁ לוֹמַר",transliteration:"v'yesh lomar",english:"and one can answer",cat:"structure"},
+    {hebrew:"תֵּימָא",transliteration:"teima",english:"you might say",cat:"logic"},
+    {hebrew:"קָשֶׁה",transliteration:"kashe",english:"it is difficult",cat:"logic"},
+    {hebrew:"דּוֹחֶה",transliteration:"doche",english:"pushes away / rejects",cat:"logic"},
+    {hebrew:"סוֹבֵר",transliteration:"sover",english:"holds / maintains an opinion",cat:"opinion"},
+    {hebrew:"חוֹלֵק",transliteration:"cholek",english:"disagrees",cat:"opinion"},
+    {hebrew:"רַבֵּנוּ תָּם",transliteration:"rabbeinu tam",english:"Rabbeinu Tam",cat:"people"},
+    {hebrew:"דְּלָא כְּ",transliteration:"d'la k'",english:"not in accordance with",cat:"logic"},
+    {hebrew:"עַל פִּי",transliteration:"al pi",english:"according to",cat:"logic"},
+    {hebrew:"צָרִיךְ לוֹמַר",transliteration:"tzarich lomar",english:"one must say",cat:"logic"},
+    {hebrew:"הָכָא נָמֵי",transliteration:"hacha nami",english:"here also",cat:"reference"},
+    {hebrew:"בְּרֵישׁ פֶּרֶק",transliteration:"b'reish perek",english:"at the beginning of the chapter",cat:"structure"},
+    {hebrew:"לְקַמָּן",transliteration:"l'kaman",english:"later / further on",cat:"reference"},
+    {hebrew:"לְעֵיל",transliteration:"l'eil",english:"above / earlier",cat:"reference"},
+    {hebrew:"מוֹכִיחַ",transliteration:"mochiach",english:"proves",cat:"logic"},
+    {hebrew:"דָּמֵי",transliteration:"damei",english:"is similar to",cat:"logic"},
+    {hebrew:"הָרְאָיָה",transliteration:"har'aya",english:"the proof",cat:"logic"},
+    {hebrew:"רַשִׁ\"י",transliteration:"rashi",english:"Rashi",cat:"people"},
+    {hebrew:"הָר\"י",transliteration:"ha'ri",english:"the Ri / R' Yitzchak",cat:"people"},
+  ],
+};
+const GEMARA_LINES = [
+  {parts:[{h:"הַשּׂוֹכֵר",e:"One who hires"},{h:"אֶת",e:"(obj.)"},{h:"הַפּוֹעֵל",e:"a worker"},{h:"לַעֲשׂוֹת",e:"to work"},{h:"עִמּוֹ",e:"with him"},{h:"בְּיֵין נֶסֶךְ",e:"with libation wine"},{h:"שְׂכָרוֹ",e:"his wages"},{h:"אָסוּר",e:"are forbidden"}],full:"One who hires a worker to work with him with libation wine — his wages are forbidden."},
+  {parts:[{h:"שְׂכָרוֹ",e:"hired him"},{h:"לַעֲשׂוֹת",e:"to do"},{h:"עִמּוֹ",e:"with him"},{h:"מְלָאכָה",e:"work"},{h:"אַחֶרֶת",e:"other"},{h:"שְׂכָרוֹ",e:"his wages"},{h:"מוּתָּר",e:"are permitted"}],full:"If he hired him for other work — his wages are permitted."},
+  {parts:[{h:"אָמַר",e:"said"},{h:"רַב",e:"Rav"},{h:"יְהוּדָה",e:"Yehuda"},{h:"אָמַר",e:"said"},{h:"רַב",e:"Rav"},{h:"אָסוּר",e:"it is forbidden"},{h:"לָאָדָם",e:"for a person"},{h:"שֶׁיֹּאמַר",e:"to say"},{h:"לְגוֹי",e:"to a gentile"}],full:"Rav Yehuda said in the name of Rav: It is forbidden for a person to say to a gentile..."},
+  {parts:[{h:"מַאי",e:"What?"},{h:"טַעְמָא",e:"is the reason"},{h:"דְּרַב",e:"of Rav"},{h:"דְּאָמַר",e:"who says"},{h:"שְׂכָרוֹ",e:"his wages"},{h:"אָסוּר",e:"are forbidden"}],full:"What is the reasoning of Rav, who says his wages are forbidden?"},
+  {parts:[{h:"אֶלָּא",e:"Rather"},{h:"אָמַר",e:"said"},{h:"רַב",e:"Rav"},{h:"נַחְמָן",e:"Nachman"},{h:"הָכָא",e:"here"},{h:"בְּמַאי",e:"with what"},{h:"עָסְקִינַן",e:"are we dealing"},{h:"כְּגוֹן",e:"such as"}],full:"Rather, Rav Nachman said: here, what case are we dealing with? Such as..."},
+];
+
+// ═══════════════════════════════════════════════════
+// PROGRESS ENGINE
+// ═══════════════════════════════════════════════════
+function ws(p,t,i){return p.words?.[`${t}_${i}`]||{correct:0,incorrect:0,streak:0,level:0,lastSeen:0};}
+function updateWs(p,t,i,correct){const k=`${t}_${i}`,v=ws(p,t,i);return{...p,words:{...p.words,[k]:{correct:v.correct+(correct?1:0),incorrect:v.incorrect+(correct?0:1),streak:correct?v.streak+1:0,level:correct?Math.min(v.level+1,7):Math.max(v.level-1,0),lastSeen:Date.now()}}};}
+
+function getAllSeenWords(p){const all=[];Object.keys(VOCAB).forEach(tid=>{VOCAB[tid].forEach((word,idx)=>{const s=ws(p,tid,idx);if(s.lastSeen>0)all.push({word,index:idx,trackId:tid,score:s});});});return all.sort(()=>Math.random()-0.5);}
+
+// Smart word picker: gemara_structural first, then content, rashi, tosfos
+// Also mixes in weak words (seen but struggling)
+const TRACK_ORDER=["gemara_structural","gemara_content","rashi","tosfos"];
+function getNextWords(p,count){
+  // 1. Grab weak words first (seen but level 0-1) — up to 2
+  const weak=[];
+  TRACK_ORDER.forEach(tid=>{(VOCAB[tid]||[]).forEach((word,idx)=>{const s=ws(p,tid,idx);if(s.lastSeen>0&&s.level<=1)weak.push({word,index:idx,trackId:tid,score:s});});});
+  weak.sort(()=>Math.random()-0.5);
+  const weakPick=weak.slice(0,Math.min(2,Math.floor(count*0.4)));
+  // 2. Fill remaining with unseen words in track priority order
+  const remaining=count-weakPick.length;
+  const fresh=[];
+  for(const tid of TRACK_ORDER){if(fresh.length>=remaining)break;(VOCAB[tid]||[]).forEach((word,idx)=>{if(fresh.length>=remaining)return;const s=ws(p,tid,idx);if(s.lastSeen===0)fresh.push({word,index:idx,trackId:tid,score:s});});}
+  return[...weakPick,...fresh];
+}
+function getNextTrackName(p){
+  for(const tid of TRACK_ORDER){const has=(VOCAB[tid]||[]).some((_,idx)=>ws(p,tid,idx).lastSeen===0);if(has)return TRACKS[tid].name;}
+  return"All Tracks";
+}
+function getTodayWords(p){const all=[],cutoff=new Date();cutoff.setHours(0,0,0,0);const ct=cutoff.getTime();Object.keys(VOCAB).forEach(tid=>{VOCAB[tid].forEach((word,idx)=>{const s=ws(p,tid,idx);if(s.lastSeen>=ct)all.push({word,index:idx,trackId:tid,score:s});});});return all.sort(()=>Math.random()-0.5);}
+function getPenaltyWords(p,count){const all=[];Object.keys(VOCAB).forEach(tid=>{VOCAB[tid].forEach((word,idx)=>{const s=ws(p,tid,idx);if(s.level>=3)all.push({word,index:idx,trackId:tid,score:s});});});return all.sort((a,b)=>b.score.level-a.score.level).slice(0,count);}
+function getTotals(p){let mastered=0,seen=0,total=0;Object.keys(VOCAB).forEach(tid=>{VOCAB[tid].forEach((_,idx)=>{total++;const s=ws(p,tid,idx);if(s.lastSeen>0)seen++;if(s.level>=4)mastered++;});});return{mastered,seen,total};}
+function calcPenalty(c){const today=todayKey(),last=c.lastStudyDate;if(!last)return{missed:0,bonus:0,review:0,decay:false};const m=daysBetween(last,today)-1;if(m<=0)return{missed:0,bonus:0,review:0,decay:false};if(m>=7)return{missed:m,bonus:m*5,review:25,decay:true};if(m>=2)return{missed:m,bonus:m*5,review:20,decay:false};return{missed:1,bonus:3,review:10,decay:false};}
+
+// ═══════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════
+const INIT_P={words:{}},INIT_C={lastStudyDate:null,streak:0,longestStreak:0,days:{},penaltyCleared:true,morningDone:null};
+
+function App(){
+  const[screen,setScreen]=useState("loading");
+  const[progress,setProgress]=useState(INIT_P);
+  const[cal,setCal]=useState(INIT_C);
+  const[penalty,setPenalty]=useState(null);
+  const[sessStart,setSessStart]=useState(null);
+  const[sessRes,setSessRes]=useState({nw:0,lv:0});
+  const[lockedWords,setLockedWords]=useState(null);
+  const[sessionLabel,setSessionLabel]=useState("");
+
+  useEffect(()=>{
+    let p=storage.get("gv3_p")||INIT_P,c=storage.get("gv3_c")||INIT_C;
+    const pen=calcPenalty(c);
+    if(pen.decay){const nw={...p.words};Object.keys(nw).forEach(k=>{if(nw[k].level>4)nw[k]={...nw[k],level:nw[k].level-1};});p={...p,words:nw};}
+    if(pen.missed>0&&c.lastStudyDate&&c.lastStudyDate!==todayKey()){setPenalty(pen);c={...c,penaltyCleared:false};}
+    if(c.lastStudyDate===todayKey()){setPenalty(null);c={...c,penaltyCleared:true};}
+    if(c.morningDone&&c.morningDone!==todayKey())c={...c,morningDone:null};
+    setProgress(p);setCal(c);setScreen("home");
+  },[]);
+
+  useEffect(()=>{if(screen!=="loading"){storage.set("gv3_p",progress);storage.set("gv3_c",cal);}},[progress,cal]);
+
+  const doAnswer=(tid,idx,correct)=>{
+    const prev=ws(progress,tid,idx),np=updateWs(progress,tid,idx,correct),ns=ws(np,tid,idx);
+    setProgress(np);setSessRes(r=>({nw:r.nw+(prev.lastSeen===0?1:0),lv:r.lv+(ns.level>prev.level?1:0)}));return np;
+  };
+  const recordSess=()=>{
+    const today=todayKey(),elapsed=Math.round((Date.now()-(sessStart||Date.now()))/1000);
+    const prev=cal.days[today]||{studied:false,time:0,nw:0,lv:0,sess:0};
+    const isNew=!prev.studied;let streak=cal.streak;
+    if(isNew){const y=new Date();y.setDate(y.getDate()-1);const yk=y.toISOString().slice(0,10);streak=(cal.lastStudyDate===yk||cal.streak===0)?cal.streak+1:1;}
+    const nc={...cal,lastStudyDate:today,streak,longestStreak:Math.max(cal.longestStreak,streak),penaltyCleared:true,
+      days:{...cal.days,[today]:{studied:true,time:prev.time+elapsed,nw:prev.nw+sessRes.nw,lv:prev.lv+sessRes.lv,sess:(prev.sess||0)+1}}};
+    setCal(nc);setPenalty(null);return nc;
+  };
+
+  const startLearning=(hasPen)=>{
+    setSessStart(Date.now());setSessRes({nw:0,lv:0});
+    if(hasPen){
+      setLockedWords(getPenaltyWords(progress,penalty?.review||10));
+      setSessionLabel("penalty");setScreen("test_round");
+    } else {
+      const seen=getAllSeenWords(progress);
+      if(seen.length>0&&cal.morningDone!==todayKey()){
+        setLockedWords(seen);setSessionLabel("morning");setScreen("test_round");
+      } else { setScreen("learn_new"); }
+    }
+  };
+
+  // ─── LOADING ───
+  if(screen==="loading")return<div style={{minHeight:"100vh",background:"#2C1E12",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:"36px",fontFamily:"'Frank Ruhl Libre',serif",color:"#C4956A"}}>דַּף הַיּוֹמִי</div><div style={{fontSize:"14px",color:"#8B7355",marginTop:"8px"}}>Loading...</div></div></div>;
+
+  // ─── HOME ───
+  if(screen==="home"){
+    const totals=getTotals(progress),today=todayKey();
+    const td=cal.days[today],hasPen=penalty&&penalty.missed>0&&!cal.penaltyCleared;
+    const complete=td&&td.time>=300&&(td.nw>=2||td.lv>=3);
+    const todayW=getTodayWords(progress);
+    const morningDone=cal.morningDone===today;
+    const seenCount=getAllSeenWords(progress).length;
+    const pct=Math.round((totals.seen/totals.total)*100);
+
+    return(
+      <div style={{minHeight:"100vh",background:"linear-gradient(170deg,#1E1610 0%,#2C1E12 30%,#3D2B1F 100%)",fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 16px 40px",color:"#FAF3E8"}}>
+
+        {/* Big status icon */}
+        <div style={{fontSize:"56px",marginBottom:"8px"}}>{complete?"✓":hasPen?"⚠️":td?"⏳":"📖"}</div>
+
+        {/* Status line */}
+        <div style={{fontSize:"22px",fontWeight:600,textAlign:"center",marginBottom:"4px",color:complete?"#6B8E7B":hasPen?"#D4726A":"#FAF3E8"}}>
+          {complete?"Done for today":hasPen?`${penalty.missed} day${penalty.missed>1?"s":""} missed`:td?"Keep going":"Time to learn"}
+        </div>
+
+        {/* Detail */}
+        <div style={{fontSize:"13px",color:"#8B7355",textAlign:"center",lineHeight:1.6,marginBottom:"20px"}}>
+          {complete&&<>{td.nw} new · {td.lv} leveled · {Math.floor(td.time/60)}m</>}
+          {hasPen&&<>Review {penalty.review} words to clear{penalty.decay&&<> · words decayed</>}</>}
+          {!complete&&!hasPen&&td&&<>{Math.floor(td.time/60)}m so far · {td.nw} new words</>}
+          {!complete&&!hasPen&&!td&&(seenCount>0&&!morningDone?<>Morning review: {seenCount} words first</>:<>5 min minimum</>)}
+        </div>
+
+        {/* Streak */}
+        {cal.streak>0&&<div style={{fontSize:"14px",color:"#C4956A",marginBottom:"20px"}}>{cal.streak>=7?"🔥":cal.streak>=3?"⚡":"📅"} {cal.streak} day streak</div>}
+
+        {/* Progress bar */}
+        <div style={{width:"min(300px,80vw)",marginBottom:"6px"}}><div style={{height:"4px",background:"rgba(255,255,255,0.08)",borderRadius:"2px",overflow:"hidden"}}><div style={{height:"100%",borderRadius:"2px",background:"linear-gradient(90deg,#6B8E7B,#C4956A)",width:`${pct}%`,transition:"width 0.5s"}}/></div></div>
+        <div style={{fontSize:"11px",color:"#8B735555",marginBottom:"28px"}}>{totals.seen} / {totals.total} words seen</div>
+
+        {/* Main button */}
+        <button onClick={()=>startLearning(hasPen)} style={{padding:"18px",borderRadius:"14px",border:"none",width:"min(340px,85vw)",fontSize:"18px",fontFamily:"'EB Garamond',serif",cursor:"pointer",color:"white",fontWeight:500,background:hasPen?"linear-gradient(135deg,#D4726A,#B85450)":complete?"linear-gradient(135deg,#6B8E7B,#5A7D6A)":"linear-gradient(135deg,#C4956A,#A0764E)",boxShadow:"0 4px 16px rgba(164,118,78,0.3)",animation:!complete&&!td?"glow 2s infinite":"none"}}>
+          {hasPen?"Clear Penalty":seenCount>0&&!morningDone?"Morning Review":complete?"Bonus Round":"Start Learning"}
+        </button>
+
+        {/* End of day review — only when relevant */}
+        {todayW.length>0&&td?.studied&&!complete&&(
+          <button onClick={()=>{setSessStart(Date.now());setSessRes({nw:0,lv:0});setLockedWords([...todayW]);setSessionLabel("evening");setScreen("test_round");}} style={{marginTop:"12px",padding:"14px",borderRadius:"12px",border:"1px solid rgba(196,149,106,0.2)",background:"transparent",width:"min(340px,85vw)",fontSize:"15px",fontFamily:"'EB Garamond',serif",cursor:"pointer",color:"#C4956A88"}}>
+            Review today's {todayW.length} words
+          </button>
+        )}
+
+        <button onClick={()=>{if(confirm("Reset ALL progress?")){setProgress(INIT_P);setCal(INIT_C);setPenalty(null);}}} style={{marginTop:"40px",background:"none",border:"none",color:"#8B735522",fontSize:"10px",cursor:"pointer",fontFamily:"'EB Garamond',serif"}}>Reset</button>
+      </div>
+    );
+  }
+
+  // ─── LEARN NEW (Teach → Test → Boss) ───
+  if(screen==="learn_new"){
+    const newW=getNextWords(progress,5);
+    const trackName=getNextTrackName(progress);
+    if(newW.length===0){
+      return(<div style={{minHeight:"100vh",background:"linear-gradient(170deg,#FFF8EF 0%,#FAF3E8 50%,#F0E4D0 100%)",fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 16px"}}>
+        <div style={{fontSize:"40px",marginBottom:"12px"}}>🎉</div>
+        <div style={{fontSize:"20px",color:"#3D2B1F",fontWeight:600}}>All {getTotals(progress).total} words learned!</div>
+        <div style={{fontSize:"14px",color:"#8B7355",marginTop:"8px"}}>You've seen every word in the database</div>
+        <button onClick={()=>setScreen("home")} style={{marginTop:"20px",padding:"14px 28px",borderRadius:"12px",border:"none",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"15px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>← Home</button>
+      </div>);
+    }
+    return<TeachRound key={`teach-${Date.now()}`} words={newW} trackName={trackName} onComplete={()=>{
+      setLockedWords([...newW]);setSessionLabel("post_teach");setScreen("test_round");
+    }} onExit={()=>{if(sessRes.nw>0||sessRes.lv>0)recordSess();setScreen("home");}}/>;
+  }
+
+  // ─── TEST ROUND (used for morning review, penalty, post-teach test, evening review) ───
+  if(screen==="test_round"){
+    if(!lockedWords||lockedWords.length===0){
+      if(sessionLabel==="morning"){setCal(c=>({...c,morningDone:todayKey()}));setScreen("learn_new");}
+      else if(sessionLabel==="penalty"){setCal(c=>({...c,penaltyCleared:true}));setPenalty(null);setScreen("learn_new");}
+      else{setScreen("learn_new");}
+      return null;
+    }
+    const labels={
+      morning:{title:"🌅 Morning Review",sub:`Prove you still know all ${lockedWords.length} words`,headerColor:"#3D2B1F"},
+      penalty:{title:"⚠️ Penalty Review",sub:`${lockedWords.length} words — clear your debt`,headerColor:"#D4726A"},
+      post_teach:{title:"✍️ Now Test Yourself",sub:`Type the meaning of the ${lockedWords.length} words you just learned`,headerColor:"#3D2B1F"},
+      evening:{title:"🌙 End of Day Review",sub:`${lockedWords.length} words from today`,headerColor:"#3D2B1F"},
+    };
+    const lb=labels[sessionLabel]||labels.post_teach;
+
+    const onDone=()=>{
+      if(sessionLabel==="morning"){setCal(c=>({...c,morningDone:todayKey()}));setSessStart(Date.now());setSessRes({nw:0,lv:0});setScreen("learn_new");}
+      else if(sessionLabel==="penalty"){setCal(c=>({...c,penaltyCleared:true}));setPenalty(null);setSessStart(Date.now());setSessRes({nw:0,lv:0});setScreen("learn_new");}
+      else if(sessionLabel==="post_teach"){setScreen("boss");}
+      else{recordSess();setScreen("done");}
+    };
+
+    return(<div style={{minHeight:"100vh",background:"linear-gradient(170deg,#FFF8EF 0%,#FAF3E8 50%,#F0E4D0 100%)",fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",padding:"12px 16px",alignItems:"center"}}>
+        <button onClick={()=>{
+          if(sessionLabel==="morning"){setCal(c=>({...c,morningDone:todayKey()}));setSessStart(Date.now());setSessRes({nw:0,lv:0});setScreen("learn_new");}
+          else if(sessionLabel==="penalty"){if(sessRes.nw>0||sessRes.lv>0)recordSess();setScreen("home");}
+          else{if(sessRes.nw>0||sessRes.lv>0)recordSess();setScreen("home");}
+        }} style={{background:"none",border:"none",color:"#C4956A",fontSize:"13px",cursor:"pointer",fontFamily:"'EB Garamond',serif"}}>{sessionLabel==="morning"?"Skip →":"✕ Exit"}</button>
+        <div style={{fontSize:"11px",color:"#8B7355"}}>{lb.title}</div>
+      </div>
+      <div style={{textAlign:"center",padding:"4px 16px 12px"}}><div style={{fontSize:"18px",color:lb.headerColor,fontWeight:600}}>{lb.title}</div><div style={{fontSize:"12px",color:"#8B7355"}}>{lb.sub}</div></div>
+      <TypeRound key={sessionLabel+sessStart} words={lockedWords} progress={progress} onAnswer={doAnswer} onComplete={onDone} onExit={()=>{if(sessRes.nw>0||sessRes.lv>0)recordSess();setScreen("home");}} showNek={lvl=>sessionLabel==="post_teach"||lvl<4} randomDir={sessionLabel!=="post_teach"} embedded={true}/>
+    </div>);
+  }
+
+  // ─── BOSS ROUND ───
+  if(screen==="boss"){
+    return(<div style={{minHeight:"100vh",background:"linear-gradient(170deg,#FFF8EF 0%,#FAF3E8 50%,#F0E4D0 100%)",fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",padding:"12px 16px"}}><button onClick={()=>{recordSess();setScreen("done");}} style={{background:"none",border:"none",color:"#C4956A",fontSize:"13px",cursor:"pointer",fontFamily:"'EB Garamond',serif"}}>✕ Skip</button><div style={{fontSize:"11px",color:"#8B7355"}}>📜 Boss Round</div></div>
+      <div style={{textAlign:"center",padding:"4px 16px 16px"}}><div style={{fontSize:"18px",color:"#3D2B1F",fontWeight:600}}>📜 Real Gemara</div><div style={{fontSize:"12px",color:"#8B7355"}}>Tap each word to reveal meaning</div></div>
+      <BossRound onComplete={()=>{recordSess();setScreen("done");}} onExit={()=>{recordSess();setScreen("done");}}/>
+    </div>);
+  }
+
+  // ─── DONE ───
+  if(screen==="done"){
+    const td=cal.days[todayKey()]||{},complete=td.time>=300&&(td.nw>=2||td.lv>=3);
+    const todayW=getTodayWords(progress);
+    return(<div style={{minHeight:"100vh",background:"linear-gradient(170deg,#1E1610 0%,#2C1E12 30%,#3D2B1F 100%)",fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 16px",color:"#FAF3E8"}}>
+      <div style={{fontSize:"52px",marginBottom:"14px"}}>{complete?"🔥":"💪"}</div>
+      <div style={{fontSize:"24px",fontWeight:600}}>{complete?"Daily Goal Complete!":"Session Done"}</div>
+      <div style={{fontSize:"14px",color:"#8B7355",marginTop:"8px",textAlign:"center",lineHeight:1.6}}>
+        {sessRes.nw>0&&<>{sessRes.nw} new word{sessRes.nw>1?"s":""}<br/></>}
+        {sessRes.lv>0&&<>{sessRes.lv} level-up{sessRes.lv>1?"s":""}<br/></>}
+        {cal.streak>1&&<>🔥 {cal.streak} day streak!</>}
+      </div>
+      <div style={{display:"flex",gap:"10px",marginTop:"24px",flexWrap:"wrap",justifyContent:"center"}}>
+        <button onClick={()=>{setSessStart(Date.now());setSessRes({nw:0,lv:0});setScreen("learn_new");}} style={{padding:"14px 28px",borderRadius:"12px",border:"none",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"15px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>Learn More</button>
+        {todayW.length>0&&<button onClick={()=>{setSessStart(Date.now());setSessRes({nw:0,lv:0});setLockedWords([...todayW]);setSessionLabel("evening");setScreen("test_round");}} style={{padding:"14px 28px",borderRadius:"12px",border:"1px solid rgba(196,149,106,0.3)",background:"transparent",color:"#C4956A",fontSize:"15px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>🌙 Review Today</button>}
+        <button onClick={()=>setScreen("home")} style={{padding:"14px 28px",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#8B7355",fontSize:"15px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>Home</button>
+      </div>
+    </div>);
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════
+// TEACH ROUND — Show words FIRST before any testing
+// ═══════════════════════════════════════════════════
+function TeachRound({words:wordsProp,trackName,onComplete,onExit}){
+  const wordsRef=useRef(wordsProp);const words=wordsRef.current;
+  const[idx,setIdx]=useState(0);
+  const[flipped,setFlipped]=useState(false);
+  const cur=words[idx];if(!cur)return null;
+  const next=()=>{setFlipped(false);if(idx+1>=words.length)onComplete();else setIdx(idx+1);};
+
+  return(<div style={{minHeight:"100vh",background:"linear-gradient(170deg,#FFF8EF 0%,#FAF3E8 50%,#F0E4D0 100%)",fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+    <div style={{display:"flex",justifyContent:"space-between",padding:"12px 16px",alignItems:"center"}}>
+      <button onClick={onExit} style={{background:"none",border:"none",color:"#C4956A",fontSize:"13px",cursor:"pointer",fontFamily:"'EB Garamond',serif"}}>✕ Exit</button>
+      <div style={{fontSize:"11px",color:"#8B7355"}}>📚 Learn · {idx+1}/{words.length}</div>
+    </div>
+    <div style={{textAlign:"center",padding:"4px 16px 12px"}}><div style={{fontSize:"18px",color:"#3D2B1F",fontWeight:600}}>📚 Learn New Words</div><div style={{fontSize:"12px",color:"#8B7355"}}>{trackName?`From: ${trackName} · `:""}Study each word, then you'll be tested</div></div>
+
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"16px",padding:"0 16px 40px",flex:1}}>
+      <div style={{display:"flex",gap:"3px",justifyContent:"center",flexWrap:"wrap",maxWidth:"280px"}}>
+        {words.map((_,i)=><div key={i} style={{width:"7px",height:"7px",borderRadius:"50%",background:i<idx?"#6B8E7B":i===idx?"#C4956A":"#D4B89644"}}/>)}
+      </div>
+
+      <div key={idx} style={{width:"min(340px,88vw)",margin:"8px auto",background:"linear-gradient(145deg,#FFFFFF,#FAF3E8)",borderRadius:"16px",border:"2px solid #D4B896",padding:"28px 20px",textAlign:"center",animation:"fadeUp 0.3s ease"}}>
+        <div style={{fontSize:"9px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"8px"}}>{cur.word.cat} · Word {idx+1} of {words.length}</div>
+        <div style={{fontSize:"44px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.2}}>{cur.word.hebrew}</div>
+        <div style={{fontSize:"15px",color:"#8B7355",marginTop:"8px",fontStyle:"italic"}}>{cur.word.transliteration}</div>
+
+        {!flipped?(
+          <button onClick={()=>setFlipped(true)} style={{marginTop:"24px",padding:"14px 36px",borderRadius:"12px",border:"2px solid #C4956A",background:"transparent",color:"#C4956A",fontSize:"16px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>
+            Show Meaning
+          </button>
+        ):(
+          <div style={{marginTop:"16px",animation:"fadeUp 0.3s ease"}}>
+            <div style={{width:"60%",height:"1px",background:"#D4B89644",margin:"0 auto 14px"}}/>
+            <div style={{fontSize:"24px",color:"#3D2B1F",fontWeight:600}}>{cur.word.english}</div>
+            <div style={{fontSize:"13px",color:"#8B7355",marginTop:"10px"}}>Without nekudot: <span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"22px",color:"#3D2B1F"}}>{stripNekudot(cur.word.hebrew)}</span></div>
+            <button onClick={next} style={{marginTop:"24px",padding:"14px 40px",borderRadius:"12px",border:"none",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>
+              {idx+1<words.length?"Got It → Next":"Got It ✓"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div style={{fontSize:"12px",color:"#8B735577",textAlign:"center",maxWidth:"280px",lineHeight:1.5}}>
+        Study carefully — you'll be tested right after
+      </div>
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// TYPE ROUND
+// ═══════════════════════════════════════════════════
+function TypeRound({words:wordsProp,progress,onAnswer,onComplete,onExit,showNek,randomDir,embedded}){
+  const wordsRef=useRef(wordsProp);const words=wordsRef.current;
+  const[idx,setIdx]=useState(0),[input,setInput]=useState(""),[fb,setFb]=useState(null),[dir,setDir]=useState("h2e");
+  const ref=useRef(null);
+  useEffect(()=>{if(randomDir&&!fb)setDir(Math.random()>0.4?"h2e":"e2h");},[idx]);
+  useEffect(()=>{if(ref.current&&!fb)setTimeout(()=>ref.current?.focus(),100);},[idx,fb]);
+  const cur=words[idx];if(!cur)return null;
+  const sc=ws(progress,cur.trackId,cur.index),useN=showNek(sc.level),heb=useN?cur.word.hebrew:stripNekudot(cur.word.hebrew);
+  const submit=()=>{if(!input.trim())return;const ans=dir==="h2e"?cur.word.english:cur.word.transliteration;const r=fuzzyMatch(input,ans);onAnswer(cur.trackId,cur.index,r!=="wrong");setFb({r});};
+  const next=()=>{setInput("");setFb(null);if(idx+1>=words.length)onComplete();else setIdx(idx+1);};
+  const onKey=e=>{if(e.key==="Enter"){if(fb)next();else submit();}};
+  const fbc={exact:{bg:"#D4EDDA",bd:"#6B8E7B",tx:"#2D5F3F",lb:"✓ Correct!"},close:{bg:"#FFF3CD",bd:"#C4956A",tx:"#6B5A2E",lb:"~ Close enough"},wrong:{bg:"#F8D7DA",bd:"#D4726A",tx:"#7A2B2B",lb:"✗ Not quite"}};
+
+  return(<div style={{display:"flex",flexDirection:"column",flex:1,padding:"0 14px 120px"}}>
+    <div style={{display:"flex",gap:"3px",justifyContent:"center",flexWrap:"wrap",maxWidth:"280px",margin:"0 auto"}}>{words.map((_,i)=><div key={i} style={{width:"7px",height:"7px",borderRadius:"50%",background:i<idx?"#6B8E7B":i===idx?"#C4956A":"#D4B89644"}}/>)}</div>
+    {!useN&&<div style={{fontSize:"10px",color:"#C4956A",letterSpacing:"1px",textTransform:"uppercase",textAlign:"center",marginTop:"8px"}}>⚡ No nekudot</div>}
+    <div style={{width:"min(340px,88vw)",margin:"12px auto",background:"linear-gradient(145deg,#FFFFFF,#FAF3E8)",borderRadius:"14px",border:"2px solid #D4B896",padding:"24px 18px",textAlign:"center"}}>
+      {dir==="h2e"?<><div style={{fontSize:"9px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"4px"}}>{cur.word.cat} · {idx+1}/{words.length}</div><div style={{fontSize:"40px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.2}}>{heb}</div>{useN&&<div style={{fontSize:"13px",color:"#8B7355",marginTop:"5px",fontStyle:"italic"}}>{cur.word.transliteration}</div>}</>
+      :<><div style={{fontSize:"9px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"4px"}}>Type the transliteration · {idx+1}/{words.length}</div><div style={{fontSize:"22px",color:"#3D2B1F"}}>{cur.word.english}</div></>}
+    </div>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"10px 14px 24px",background:"#FAF3E8ee",borderTop:"1px solid #D4B89633",backdropFilter:"blur(8px)"}}>
+      {!fb?<div style={{display:"flex",gap:"7px",maxWidth:"400px",margin:"0 auto"}}>
+        <input ref={ref} type="text" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey} placeholder={dir==="h2e"?"Type English...":"Type transliteration..."} autoComplete="off" autoCorrect="off" autoCapitalize="off" style={{flex:1,padding:"13px 14px",borderRadius:"11px",border:"2px solid #D4B896",background:"#FFF",fontSize:"17px",fontFamily:"'EB Garamond',serif",color:"#3D2B1F",outline:"none"}}/>
+        <button onClick={submit} style={{padding:"13px 18px",borderRadius:"11px",border:"none",background:input.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89644",color:"white",fontSize:"15px",cursor:input.trim()?"pointer":"default",fontFamily:"'EB Garamond',serif",minWidth:"70px"}}>Check</button>
+      </div>
+      :<div style={{maxWidth:"400px",margin:"0 auto"}}>
+        <div style={{background:fbc[fb.r].bg,border:`2px solid ${fbc[fb.r].bd}`,borderRadius:"10px",padding:"10px 14px",textAlign:"center",marginBottom:"7px"}}>
+          <div style={{fontSize:"15px",fontWeight:600,color:fbc[fb.r].tx}}>{fbc[fb.r].lb}</div>
+          <div style={{fontSize:"13px",color:"#3D2B1F",marginTop:"3px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"20px"}}>{cur.word.hebrew}</span> = <strong>{cur.word.english}</strong></div>
+        </div>
+        <button onClick={next} style={{width:"100%",padding:"13px",borderRadius:"11px",border:"none",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"15px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>{idx+1<words.length?"Next →":"Complete ✓"}</button>
+      </div>}
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// BOSS ROUND
+// ═══════════════════════════════════════════════════
+function BossRound({onComplete,onExit}){
+  const[li,setLi]=useState(0),[rev,setRev]=useState([]),[allRev,setAllRev]=useState(false);
+  const line=GEMARA_LINES[li%GEMARA_LINES.length],total=Math.min(GEMARA_LINES.length,3);
+  const reveal=i=>{if(rev.includes(i))return;const nr=[...rev,i];setRev(nr);if(nr.length===line.parts.length)setAllRev(true);};
+  const next=()=>{if(li+1>=total)onComplete();else{setLi(li+1);setRev([]);setAllRev(false);}};
+  return(<div style={{flex:1,padding:"0 16px 40px"}}>
+    <div style={{textAlign:"center",marginBottom:"12px"}}><div style={{fontSize:"12px",color:"#8B7355"}}>Tap each word · Line {li+1}/{total}</div></div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:"7px",justifyContent:"center",direction:"rtl",maxWidth:"400px",margin:"0 auto"}}>
+      {line.parts.map((p,i)=><div key={i} onClick={()=>reveal(i)} style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"9px 12px",borderRadius:"9px",background:rev.includes(i)?"linear-gradient(135deg,#FAF3E8,#F0E4D0)":"#E8DCC8",border:`2px solid ${rev.includes(i)?"#C4956A":"#D4B89655"}`,cursor:rev.includes(i)?"default":"pointer",transition:"all 0.3s",minWidth:"44px"}}><span style={{fontSize:"20px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F"}}>{stripNekudot(p.h)}</span>{rev.includes(i)&&<span style={{fontSize:"10px",color:"#6B8E7B",marginTop:"3px",fontWeight:600,textAlign:"center"}}>{p.e}</span>}</div>)}
+    </div>
+    {allRev&&<div style={{margin:"16px auto",background:"#F0EBE0",borderRadius:"10px",padding:"14px",textAlign:"center",border:"1px solid #D4B896",maxWidth:"400px"}}><div style={{fontSize:"11px",color:"#8B7355",marginBottom:"4px"}}>Full translation:</div><div style={{fontSize:"15px",color:"#3D2B1F",lineHeight:1.5}}>{line.full}</div><button onClick={next} style={{marginTop:"12px",padding:"11px 28px",borderRadius:"10px",border:"none",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"14px",fontFamily:"'EB Garamond',serif",cursor:"pointer"}}>{li+1<total?"Next Line →":"Done ✓"}</button></div>}
+  </div>);
+}
+
+ReactDOM.render(<App/>,document.getElementById('root'));
+  </script>
+</body>
+</html>
