@@ -1,0 +1,15 @@
+{
+  "name": "Daf HaYomi — Gemara Vocabulary",
+  "short_name": "Daf HaYomi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2C1E12",
+  "theme_color": "#2C1E12",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%232C1E12' width='100' height='100' rx='20'/><text y='65' x='50' text-anchor='middle' font-size='50'>📜</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
