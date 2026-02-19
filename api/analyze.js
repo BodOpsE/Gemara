@@ -26,7 +26,7 @@ Based on this data, give a SHORT coaching response (4-6 sentences max):
 2. Give ONE specific, actionable tip to improve
 3. Pick the 2-3 most important words they should focus on and give a quick memory trick for each
 
-Be warm and encouraging like a chavrusa. Use transliterations.`;
+Be warm and encouraging like a chavrusa. ALWAYS include Hebrew with nekudot next to transliterations like תָּנָא (tana) — the student needs to see the actual letters.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -38,7 +38,7 @@ Be warm and encouraging like a chavrusa. Use transliterations.`;
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 600,
-        system: "You are a Gemara vocabulary coach for a frum yeshiva student learning Masechet Avodah Zarah. Be concise, warm, and actionable. Use Ashkenazi transliterations.",
+        system: "You are a Gemara vocabulary coach for a frum yeshiva student learning Masechet Avodah Zarah. Be concise, warm, and actionable. ALWAYS include Hebrew with nekudot next to transliterations like תָּנָא (tana).",
         messages: [{ role: 'user', content: prompt }],
       }),
     });
