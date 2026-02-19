@@ -454,7 +454,7 @@ function Teach({words:wp,trackName,progress,onDone,onExit}){
             {/* Prefix decoder */}
             {prefix&&<div style={{padding:"10px 12px",borderRadius:"8px",background:"rgba(107,142,123,0.08)",border:"1px solid rgba(107,142,123,0.15)",marginBottom:"8px"}}>
               <div style={{fontSize:"10px",color:"#6B8E7B",letterSpacing:"1.5px",marginBottom:"4px"}}>🔤 PREFIX BREAKDOWN</div>
-              <div style={{fontSize:"15px",color:"#3D2B1F"}}>{prefix.map((p,i)=><span key={i}>{i>0?" + "}<strong>{p.p}</strong> <span style={{color:"#8B7355"}}>({p.m})</span></span>)}</div>
+              <div style={{fontSize:"15px",color:"#3D2B1F"}}>{prefix.map((p,i)=><span key={i}>{i>0?" + "}<strong>{p.p}</strong> <span style={{color:"#8B7355"}}>{"("+p.m+")"}</span></span>)}</div>
             </div>}
             {/* Root connections */}
             {root&&root.rel.length>0&&<div style={{padding:"10px 12px",borderRadius:"8px",background:"rgba(196,149,106,0.06)",border:"1px solid rgba(196,149,106,0.12)",marginBottom:"8px"}}>
