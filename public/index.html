@@ -432,12 +432,14 @@ function App(){
   const save=(np,nc)=>{LS.set("gv6_p",np);LS.set("gv6_c",nc);};
 
   useEffect(()=>{const init=async()=>{let p=LS.get("gv6_p")||IP,c=LS.get("gv6_c")||IC;if(sb){const d=await loadFromDb();if(d){const dt=new Date(d.updated_at).getTime(),lt=c.ld?new Date(c.ld).getTime():0;if(dt>lt){p=d.data||p;c=d.calendar||c;}}}const pe=calcPen(c);if(pe?.decay){const nw={...p.w};Object.keys(nw).forEach(k=>{if(nw[k].lv>4)nw[k]={...nw[k],lv:nw[k].lv-1};});p={...p,w:nw};}if(pe&&c.ld&&c.ld!==todayKey()){setPen(pe);c={...c,pc:false};}if(c.ld===todayKey()){setPen(null);c={...c,pc:true};}if(c.md&&c.md!==todayKey())c={...c,md:null};setPr(p);setCal(c);save(p,c);setSc("home");
-    // Pre-generate daily brief in background
-    const bk="gv6_brief_"+todayKey();if(!LS.get(bk)&&allSeen(p).length>=5&&!isExempt(todayKey())){
-      const weak=getWeakWords(p),t=tots(p),due=dueWords(p).length;
-      askAI(`Student stats: ${t.s}/${t.t} seen, ${t.m} mastered, ${c.sk}-day streak, ${due} words due for review, ${weak.length} weak. Their weakest words are: ${weak.slice(0,5).map(w=>`${w.hebrew} (${w.transliteration}) = "${w.english}"`).join(", ")}. Give a 1-2 sentence personalized daily greeting and learning tip. ALWAYS include Hebrew with nekudot when mentioning any word, like תָּנָא (tana). Be warm, specific, actionable. Like a rebbi starting a morning seder.`,
-      "You are a Gemara rebbi giving a personalized daily briefing. Max 2 sentences. Warm, specific. ALWAYS include Hebrew with nekudot next to transliterations.",200)
-      .then(t=>{LS.set(bk,t);});
+    // Generate fresh brief every time app opens
+    const seenN2=allSeen(p).length;
+    if(seenN2>=5&&!isExempt(todayKey())){
+      const weak=getWeakWords(p),t2=tots(p),due=dueWords(p).length;
+      const hr=estHour();const timeGreet=hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
+      askAI(`${timeGreet}! Student stats: ${t2.s}/${t2.t} seen, ${t2.m} mastered, ${c.sk}-day streak, ${due} words due for review, ${weak.length} weak. Their weakest words are: ${weak.slice(0,5).map(w=>`${w.hebrew} (${w.transliteration}) = "${w.english}"`).join(", ")}. Give a 1-2 sentence personalized greeting and learning tip. Start with "${timeGreet}!" ALWAYS include Hebrew with nekudot when mentioning any word, like תָּנָא (tana). Be warm, specific, actionable. Like a rebbi starting a seder.`,
+      "You are a Gemara rebbi giving a personalized briefing. Max 2 sentences. Warm, specific. ALWAYS include Hebrew with nekudot next to transliterations.",200)
+      .then(t3=>{LS.set("gv6_brief_"+todayKey(),t3);});
     }
   };init();
     // Sync on background
@@ -572,7 +574,7 @@ function App(){
     };
     return(<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
       <div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px",alignItems:"center"}}><button onClick={()=>{if(sl==="am"){/* No skip — morning review is mandatory */}else{if(sr.nw>0||sr.lv>0)rec();setSc("home");}}} style={{background:"none",color:sl==="am"?"#8B735544":"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px",pointerEvents:sl==="am"?"none":"auto"}}>{sl==="am"?"🌅 Required":"✕"}</button><div style={{display:"flex",alignItems:"center",gap:"8px"}}>{ss&&<SessionTimer startTime={ss}/>}<span style={{fontSize:"12px",color:"#8B7355"}}>{lb.t}</span></div></div>
-      <Test key={sl+ss} words={lw} progress={pr} onAns={doAns} onDone={onDone} showNek={l=>sl==="pt"||sl==="pt2"||l<4} rDir={sl!=="pt"&&sl!=="pt2"}/>
+      <Test key={sl+ss} words={lw} progress={pr} onAns={doAns} onDone={onDone} showNek={l=>sl==="pt"||sl==="pt2"||l<4}/>
     </div>);
   }
 
@@ -771,17 +773,16 @@ function Teach({words:wp,trackName,progress,onDone,onExit,ss}){
 // ═══════════════════════════════════════════════════
 // TEST (scroll fix: card pinned, smarter answer feedback)
 // ═══════════════════════════════════════════════════
-function Test({words:wp,progress,onAns,onDone,showNek,rDir}){
+function Test({words:wp,progress,onAns,onDone,showNek}){
   const wr=useRef(wp),words=wr.current;
-  const[idx,setIdx]=useState(0),[inp,setInp]=useState(""),[fb,setFb]=useState(null),[dir,setDir]=useState("h2e");
+  const[idx,setIdx]=useState(0),[inp,setInp]=useState(""),[fb,setFb]=useState(null);
   const[ai,setAi]=useState(""),[aiL,setAiL]=useState(false);const ref=useRef(null);
-  useEffect(()=>{if(rDir&&!fb)setDir(Math.random()>0.4?"h2e":"e2h");},[idx]);
-  useEffect(()=>{if(ref.current&&!fb)setTimeout(()=>ref.current?.focus(),150);},[idx,fb]);
+  // Always Hebrew → English
+  useEffect(()=>{if(ref.current&&!fb)setTimeout(()=>{ref.current?.focus();ref.current?.scrollIntoView({behavior:'smooth',block:'center'});},250);},[idx,fb]);
   const cur=words[idx];if(!cur)return null;
   const sc=ws(progress,cur.t,cur.i),useN=showNek(sc.lv),heb=useN?cur.w.h:stripN(cur.w.h);
-  const sub=()=>{if(!inp.trim())return;const ans=dir==="h2e"?cur.w.e:cur.w.t;const r=fuzzy(inp,ans);const ok=r!=="wrong";onAns(cur.t,cur.i,ok);setFb(r);
-    // Auto-tip for close answers
-    if(r==="close"){askAI(`The student typed "${inp}" for ${cur.w.h} (${cur.w.t}). The full answer is "${cur.w.e}". They were close. In ONE sentence, explain the nuance they should know — e.g. "Both meanings matter because..." or "The full phrase covers both X and Y." Include Hebrew with nekudot.`).then(t=>setAi(t));}
+  const sub=()=>{if(!inp.trim())return;const r=fuzzy(inp,cur.w.e);const ok=r!=="wrong";onAns(cur.t,cur.i,ok);setFb(r);
+    if(r==="close"){askAI(`The student typed "${inp}" for ${cur.w.h} (${cur.w.t}). The full answer is "${cur.w.e}". They were close. In ONE sentence, explain the nuance they should know. Include Hebrew with nekudot.`).then(t=>setAi(t));}
   };
   const next=()=>{setInp("");setFb(null);setAi("");if(idx+1>=words.length)onDone();else setIdx(idx+1);};
   const onKey=e=>{if(e.key==="Enter"){if(fb)next();else sub();}};
@@ -789,28 +790,19 @@ function Test({words:wp,progress,onAns,onDone,showNek,rDir}){
   const mnem=async()=>{setAiL(true);setAi("");const t=await askAI(`Memory trick for "${cur.w.h}" (${cur.w.t}) = "${cur.w.e}". Creative wordplay/sounds-like. 1-2 sentences. Include Hebrew with nekudot.`);setAi(t);setAiL(false);};
   const fc={exact:{bg:"#D4EDDA",bd:"#6B8E7B",tx:"#2D5F3F",l:"✓ Correct!"},close:{bg:"#FFF3CD",bd:"#C4956A",tx:"#6B5A2E",l:"✓ Basically correct"},wrong:{bg:"#F8D7DA",bd:"#D4726A",tx:"#7A2B2B",l:"✗ Not quite"}};
 
-  // SCROLL FIX: Card in a sticky/pinned flex area, input fixed at bottom
-  // Uses visualViewport API to handle mobile keyboard
-  return(<div style={{display:"flex",flexDirection:"column",flex:1,height:"var(--app-h, 100%)"}}>
-    {/* Dots */}
-    <div style={{display:"flex",gap:"4px",justifyContent:"center",flexWrap:"wrap",maxWidth:"280px",margin:"0 auto 8px",padding:"0 20px",flexShrink:0}}>{words.map((_,i)=><div key={i} style={{width:"8px",height:"8px",borderRadius:"50%",background:i<idx?"#6B8E7B":i===idx?"#C4956A":"#D4B89644"}}/>)}</div>
-    {/* Card area: pinned, never scrolls off */}
-    <div style={{flexShrink:0,padding:"0 20px"}}>
-      {!useN&&<div style={{fontSize:"11px",color:"#C4956A",letterSpacing:"1.5px",textTransform:"uppercase",textAlign:"center",marginBottom:"6px"}}>⚡ NO NEKUDOT</div>}
-      <div style={{...CARD,padding:"20px 16px"}}>
-        {dir==="h2e"?<><div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"4px"}}>{cur.w.c} · {idx+1}/{words.length}</div><div style={{fontSize:"40px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.2}}>{heb}</div>{useN&&<div style={{fontSize:"14px",color:"#8B7355",marginTop:"4px",fontStyle:"italic"}}>{cur.w.t}</div>}</>
-        :<><div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"4px"}}>TRANSLATE · {idx+1}/{words.length}</div><div style={{fontSize:"22px",color:"#3D2B1F"}}>{cur.w.e}</div></>}
-      </div>
+  // SAMSUNG FIX: No position:fixed or sticky. Everything in normal document flow.
+  // Input uses scrollIntoView on focus so keyboard never hides it.
+  return(<div style={{flex:1,padding:"0 20px 20px",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+    <div style={{display:"flex",gap:"4px",justifyContent:"center",flexWrap:"wrap",maxWidth:"280px",margin:"0 auto 8px"}}>{words.map((_,i)=><div key={i} style={{width:"8px",height:"8px",borderRadius:"50%",background:i<idx?"#6B8E7B":i===idx?"#C4956A":"#D4B89644"}}/>)}</div>
+    {!useN&&<div style={{fontSize:"11px",color:"#C4956A",letterSpacing:"1.5px",textTransform:"uppercase",textAlign:"center",marginBottom:"6px"}}>⚡ NO NEKUDOT</div>}
+    <div style={{...CARD,padding:"20px 16px",marginBottom:"12px"}}>
+      <div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"4px"}}>{cur.w.c} · {idx+1}/{words.length}</div>
+      <div style={{fontSize:"40px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.2}}>{heb}</div>
+      {useN&&<div style={{fontSize:"14px",color:"#8B7355",marginTop:"4px",fontStyle:"italic"}}>{cur.w.t}</div>}
     </div>
-    {/* AI response area — this part can scroll */}
-    {(ai||aiL)&&<div style={{padding:"8px 20px",overflow:"auto",flexShrink:1}}><div style={{maxWidth:"360px",margin:"0 auto",...ABOX}}><div style={ALAB}>AI CHAVRUSA</div>{aiL?<div style={{color:"#C4956A88",fontSize:"14px",animation:"pulse 1.5s infinite"}}>Thinking...</div>:<div style={{color:"#FAF3E8ee",fontSize:"14px",lineHeight:1.7}}>{ai}</div>}</div></div>}
-    {/* Spacer for fixed input */}
-    <div style={{flexGrow:1}}/>
-    {/* Input area: positioned at bottom with keyboard awareness */}
-    <div style={{position:"sticky",bottom:0,padding:`10px 20px calc(10px + ${SB})`,background:"#FAF3E8",borderTop:"1px solid #D4B89622",zIndex:10}}>
-      {!fb?<div style={{maxWidth:"400px",margin:"0 auto"}}><div style={{display:"flex",gap:"8px"}}><input ref={ref} type="text" value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={onKey} placeholder={dir==="h2e"?"Type English...":"Type transliteration..."} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" style={{flex:1,padding:"12px 14px",borderRadius:"12px",border:"2px solid #D4B896",background:"#FFF",fontSize:"17px",color:"#3D2B1F"}}/><button onClick={sub} style={{padding:"12px 18px",borderRadius:"12px",background:inp.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89633",color:"white",fontSize:"16px",minWidth:"64px",minHeight:"48px"}}>Go</button></div><button onClick={hint} disabled={aiL} style={{display:"block",margin:"8px auto 0",padding:"6px 14px",background:"none",color:"#B8A08077",fontSize:"12px",minHeight:"32px"}}>💡 Hint</button></div>
-      :<div style={{maxWidth:"400px",margin:"0 auto"}}><div style={{background:fc[fb].bg,border:`2px solid ${fc[fb].bd}`,borderRadius:"12px",padding:"10px 14px",textAlign:"center",marginBottom:"6px"}}><div style={{fontSize:"15px",fontWeight:600,color:fc[fb].tx}}>{fc[fb].l}{fb==="close"&&<span style={{fontWeight:400,fontSize:"13px"}}> — full: {cur.w.e}</span>}</div><div style={{fontSize:"14px",color:"#3D2B1F",marginTop:"4px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"20px"}}>{cur.w.h}</span> = <strong>{cur.w.e}</strong></div>{fb==="wrong"&&<button onClick={mnem} disabled={aiL} style={{marginTop:"8px",...ABTN,fontSize:"12px"}}>🧠 Help me remember</button>}</div>{ai&&fb==="close"&&<div style={{maxWidth:"400px",margin:"0 auto 6px",...ABOX,padding:"8px 12px"}}><div style={{color:"#FAF3E8dd",fontSize:"13px",lineHeight:1.6}}>{ai}</div></div>}<button onClick={next} style={{width:"100%",padding:"12px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"48px"}}>{idx+1<words.length?"Next →":"Complete ✓"}</button></div>}
-    </div>
+    {(ai||aiL)&&<div style={{marginBottom:"12px",...ABOX}}><div style={ALAB}>AI CHAVRUSA</div>{aiL?<div style={{color:"#C4956A88",fontSize:"14px",animation:"pulse 1.5s infinite"}}>Thinking...</div>:<div style={{color:"#FAF3E8ee",fontSize:"14px",lineHeight:1.7}}>{ai}</div>}</div>}
+    {!fb?<div style={{maxWidth:"400px",margin:"0 auto",width:"100%"}}><div style={{display:"flex",gap:"8px"}}><input ref={ref} type="text" value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={onKey} placeholder="Type English meaning..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" style={{flex:1,padding:"12px 14px",borderRadius:"12px",border:"2px solid #D4B896",background:"#FFF",fontSize:"17px",color:"#3D2B1F"}} onFocus={()=>setTimeout(()=>ref.current?.scrollIntoView({behavior:'smooth',block:'center'}),300)}/><button onClick={sub} style={{padding:"12px 18px",borderRadius:"12px",background:inp.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89633",color:"white",fontSize:"16px",minWidth:"64px",minHeight:"48px"}}>Go</button></div><button onClick={hint} disabled={aiL} style={{display:"block",margin:"8px auto 0",padding:"6px 14px",background:"none",color:"#B8A08077",fontSize:"12px",minHeight:"32px"}}>💡 Hint</button></div>
+    :<div style={{maxWidth:"400px",margin:"0 auto",width:"100%"}}><div style={{background:fc[fb].bg,border:`2px solid ${fc[fb].bd}`,borderRadius:"12px",padding:"10px 14px",textAlign:"center",marginBottom:"6px"}}><div style={{fontSize:"15px",fontWeight:600,color:fc[fb].tx}}>{fc[fb].l}{fb==="close"&&<span style={{fontWeight:400,fontSize:"13px"}}> — full: {cur.w.e}</span>}</div><div style={{fontSize:"14px",color:"#3D2B1F",marginTop:"4px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"20px"}}>{cur.w.h}</span> = <strong>{cur.w.e}</strong></div>{fb==="wrong"&&<button onClick={mnem} disabled={aiL} style={{marginTop:"8px",...ABTN,fontSize:"12px"}}>🧠 Help me remember</button>}</div>{ai&&fb==="close"&&<div style={{margin:"0 auto 6px",...ABOX,padding:"8px 12px"}}><div style={{color:"#FAF3E8dd",fontSize:"13px",lineHeight:1.6}}>{ai}</div></div>}<button onClick={next} style={{width:"100%",padding:"12px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"48px"}}>{idx+1<words.length?"Next →":"Complete ✓"}</button></div>}
   </div>);
 }
 
@@ -819,26 +811,32 @@ function Test({words:wp,progress,onAns,onDone,showNek,rDir}){
 // ═══════════════════════════════════════════════════
 function FillBlank({blanks,progress,onAns,onDone,onSkip,ss}){
   const[idx,setIdx]=useState(0),[inp,setInp]=useState(""),[fb,setFb]=useState(null);const ref=useRef(null);
-  useEffect(()=>{if(ref.current&&!fb)setTimeout(()=>ref.current?.focus(),150);},[idx,fb]);
+  useEffect(()=>{if(ref.current&&!fb)setTimeout(()=>{ref.current?.focus();ref.current?.scrollIntoView({behavior:'smooth',block:'center'});},250);},[idx,fb]);
   const cur=blanks[idx];if(!cur)return null;
   const bw=blankWord(cur.ak);
+  // Build full phrase with target word highlighted
+  const phrase=cur.ph.replace(/_+/g,bw.w.h);
   const sub=()=>{if(!inp.trim())return;const r=fuzzy(inp,bw.w.e);onAns(bw.t,bw.i,r!=="wrong");setFb(r);};
   const next=()=>{setInp("");setFb(null);if(idx+1>=blanks.length)onDone();else setIdx(idx+1);};
   const onKey=e=>{if(e.key==="Enter"){if(fb)next();else sub();}};
   const fc={exact:{bg:"#D4EDDA",bd:"#6B8E7B",tx:"#2D5F3F",l:"✓ Correct!"},close:{bg:"#FFF3CD",bd:"#C4956A",tx:"#6B5A2E",l:"✓ Close enough"},wrong:{bg:"#F8D7DA",bd:"#D4726A",tx:"#7A2B2B",l:"✗ Not quite"}};
-  return(<div style={{minHeight:"var(--app-h, 100vh)",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
-    <div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px"}}><button onClick={onSkip} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>Skip</button><div style={{display:"flex",alignItems:"center",gap:"8px"}}>{ss&&<SessionTimer startTime={ss}/>}<span style={{fontSize:"12px",color:"#8B7355"}}>📝 Fill the Blank · {idx+1}/{blanks.length}</span></div></div>
-    <div style={{flexShrink:0,padding:"0 20px"}}>
+  // Highlight the target word in the phrase
+  const parts=phrase.split(bw.w.h);
+  return(<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+    <div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px"}}><button onClick={onSkip} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>Skip</button><div style={{display:"flex",alignItems:"center",gap:"8px"}}>{ss&&<SessionTimer startTime={ss}/>}<span style={{fontSize:"12px",color:"#8B7355"}}>📝 In Context · {idx+1}/{blanks.length}</span></div></div>
+    <div style={{flex:1,padding:"0 20px",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
       <div style={{...CARD}}>
-        <div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",marginBottom:"12px"}}>FILL IN THE MISSING WORD</div>
-        <div style={{fontSize:"26px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.4,direction:"rtl"}}>{cur.ph}</div>
-        <div style={{fontSize:"14px",color:"#8B7355",marginTop:"10px",fontStyle:"italic"}}>{cur.hint}</div>
+        <div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",marginBottom:"12px"}}>WHAT DOES THE HIGHLIGHTED WORD MEAN?</div>
+        <div style={{fontSize:"24px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.5,direction:"rtl"}}>
+          {parts.map((p,i)=><React.Fragment key={i}>{i>0&&<span style={{background:"linear-gradient(135deg,rgba(196,149,106,0.25),rgba(196,149,106,0.15))",padding:"2px 6px",borderRadius:"6px",border:"1.5px solid #C4956A",color:"#8B4513",fontWeight:700}}>{bw.w.h}</span>}{p}</React.Fragment>)}
+        </div>
+        <div style={{fontSize:"13px",color:"#8B7355",marginTop:"10px",fontStyle:"italic"}}>{cur.hint}</div>
       </div>
-    </div>
-    <div style={{flexGrow:1}}/>
-    <div style={{position:"sticky",bottom:0,padding:`10px 20px calc(10px + ${SB})`,background:"#FAF3E8",borderTop:"1px solid #D4B89622",zIndex:10}}>
-      {!fb?<div style={{maxWidth:"400px",margin:"0 auto"}}><div style={{display:"flex",gap:"8px"}}><input ref={ref} type="text" value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={onKey} placeholder="Type the missing word..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" style={{flex:1,padding:"12px 14px",borderRadius:"12px",border:"2px solid #D4B896",background:"#FFF",fontSize:"17px",color:"#3D2B1F"}}/><button onClick={sub} style={{padding:"12px 18px",borderRadius:"12px",background:inp.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89633",color:"white",fontSize:"16px",minWidth:"64px",minHeight:"48px"}}>Go</button></div></div>
-      :<div style={{maxWidth:"400px",margin:"0 auto"}}><div style={{background:fc[fb].bg,border:`2px solid ${fc[fb].bd}`,borderRadius:"12px",padding:"10px 14px",textAlign:"center",marginBottom:"6px"}}><div style={{fontSize:"15px",fontWeight:600,color:fc[fb].tx}}>{fc[fb].l}</div><div style={{fontSize:"14px",color:"#3D2B1F",marginTop:"4px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"20px"}}>{bw.w.h}</span> = <strong>{bw.w.e}</strong></div></div><button onClick={next} style={{width:"100%",padding:"12px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"48px"}}>{idx+1<blanks.length?"Next →":"Done ✓"}</button></div>}
+      {/* Input in normal flow */}
+      <div style={{marginTop:"16px",maxWidth:"400px",margin:"16px auto 0",width:"100%"}}>
+        {!fb?<div><div style={{display:"flex",gap:"8px"}}><input ref={ref} type="text" value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={onKey} placeholder="Type English meaning..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" style={{flex:1,padding:"12px 14px",borderRadius:"12px",border:"2px solid #D4B896",background:"#FFF",fontSize:"17px",color:"#3D2B1F"}} onFocus={()=>setTimeout(()=>ref.current?.scrollIntoView({behavior:'smooth',block:'center'}),300)}/><button onClick={sub} style={{padding:"12px 18px",borderRadius:"12px",background:inp.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89633",color:"white",fontSize:"16px",minWidth:"64px",minHeight:"48px"}}>Go</button></div></div>
+        :<div><div style={{background:fc[fb].bg,border:`2px solid ${fc[fb].bd}`,borderRadius:"12px",padding:"10px 14px",textAlign:"center",marginBottom:"6px"}}><div style={{fontSize:"15px",fontWeight:600,color:fc[fb].tx}}>{fc[fb].l}</div><div style={{fontSize:"14px",color:"#3D2B1F",marginTop:"4px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"20px"}}>{bw.w.h}</span> = <strong>{bw.w.e}</strong></div></div><button onClick={next} style={{width:"100%",padding:"12px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"48px"}}>{idx+1<blanks.length?"Next →":"Done ✓"}</button></div>}
+      </div>
     </div>
   </div>);
 }
@@ -919,18 +917,12 @@ function WordReview({pr,onDone}){
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:"8px",maxWidth:"400px",margin:"0 auto"}}>
       {tw.slice(0,12).map(({w,t,i,s})=>{const k=t+"_"+i;const isOpen=revealed[k];const lines=WORD_LINES[k]||[];
-        return(<div key={k} onClick={()=>toggle(k)} style={{padding:"12px 14px",borderRadius:"10px",background:isOpen?"rgba(107,142,123,0.08)":"rgba(255,255,255,0.03)",border:`1px solid ${isOpen?"rgba(107,142,123,0.2)":"rgba(255,255,255,0.05)"}`,cursor:"pointer",transition:"all 0.2s"}}>
+        return(<div key={k} onClick={()=>toggle(k)} style={{padding:"12px 14px",borderRadius:"10px",background:isOpen?"rgba(107,142,123,0.08)":"rgba(255,255,255,0.03)",border:`1px solid ${isOpen?"rgba(107,142,123,0.2)":"rgba(255,255,255,0.05)"}`,cursor:"pointer",minHeight:"52px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:"22px",fontFamily:"'Frank Ruhl Libre',serif"}}>{w.h}</span>
-            <span style={{fontSize:"12px",color:isOpen?"#6B8E7B":"#8B735566"}}>{isOpen?w.e:"tap to reveal"}</span>
+            <span style={{fontSize:"13px",color:isOpen?"#6B8E7B":"#8B735566",fontWeight:isOpen?600:400}}>{isOpen?w.e:"tap to reveal"}</span>
           </div>
-          {isOpen&&<div style={{marginTop:"8px",animation:"fadeUp 0.2s ease"}}>
-            <div style={{fontSize:"13px",color:"#C4956Acc"}}>{w.t} = {w.e}</div>
-            {lines.length>0&&<div style={{marginTop:"6px",padding:"6px 8px",borderRadius:"6px",background:"rgba(196,149,106,0.06)",border:"1px solid rgba(196,149,106,0.1)"}}>
-              <div style={{fontSize:"14px",fontFamily:"'Frank Ruhl Libre',serif",color:"#FAF3E8cc",direction:"rtl",lineHeight:1.5}}>{lines[0].phrase}</div>
-              <div style={{fontSize:"11px",color:"#8B7355",direction:"ltr",fontStyle:"italic",marginTop:"2px"}}>{lines[0].trans}</div>
-            </div>}
-          </div>}
+          {isOpen&&<div style={{fontSize:"12px",color:"#C4956Acc",marginTop:"4px"}}>{w.t} = {w.e}</div>}
         </div>);
       })}
     </div>
