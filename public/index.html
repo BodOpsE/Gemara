@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover"/>
+  <meta name="theme-color" content="#2C1E12"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <link rel="apple-touch-icon" href="/icon-192.png"/>
+  <title>Daf HaYomi — Gemara Vocabulary</title>
+  <link rel="manifest" href="/manifest.json"/>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Frank+Ruhl+Libre:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;}
+    html{height:100%;overflow:hidden;}
+    body{font-family:'EB Garamond',serif;background:#1E1610;height:100%;overflow:hidden;overscroll-behavior:none;}
+    :root{--app-h:100vh;--kb-offset:0px;}
+    #root{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
+    input,button,textarea{font-family:'EB Garamond',serif;-webkit-appearance:none;appearance:none;border:none;outline:none;}
+    button{cursor:pointer;min-height:44px;touch-action:manipulation;}
+    input,textarea{font-size:16px!important;}
+    @keyframes glow{0%,100%{box-shadow:0 4px 16px rgba(164,118,78,0.3)}50%{box-shadow:0 4px 28px rgba(196,149,106,0.5)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script type="text/babel">
+const{useState,useEffect,useRef,useCallback}=React;
+const SUPABASE_URL="https://goyhoiyqyxajkmscnvpd.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdveWhvaXlxeXhhamttc2NudnBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1MjEyNjIsImV4cCI6MjA4NzA5NzI2Mn0.-9-YlMhvjsJYbX5NBs5QKm7lBgUcGE88h4upAJrI8q0";
+const sbOn=SUPABASE_URL&&!SUPABASE_URL.includes("%%");
+const sb=sbOn?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
+const LS={get(k){try{return JSON.parse(localStorage.getItem(k))}catch{return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+
+// ═══════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════
+function stripN(t){return t.replace(/[\u0591-\u05C7]/g,"");}
+function todayKey(){return estNow().toISOString().slice(0,10);}
+function daysBetween(a,b){return Math.floor((new Date(b)-new Date(a))/864e5);}
+
+// EST timezone helpers
+function estNow(){const d=new Date();return new Date(d.toLocaleString("en-US",{timeZone:"America/New_York"}));}
+function estHour(){return estNow().getHours()+estNow().getMinutes()/60;}
+
+// Shabbos/YT exempt calendar
+// YT dates for 5786 (Sep 2025 - Sep 2026) + 5787 start
+const YT_DATES=new Set([
+"2025-09-22","2025-09-23","2025-10-01","2025-10-06","2025-10-07",
+"2025-10-13","2025-10-14",
+"2026-04-01","2026-04-02","2026-04-07","2026-04-08",
+"2026-05-21","2026-05-22",
+"2026-09-11","2026-09-12","2026-09-20",
+"2026-09-25","2026-09-26","2026-10-02","2026-10-03",
+]);
+function isExempt(dateStr){
+  const d=new Date(dateStr+"T12:00:00");
+  if(d.getDay()===6)return true; // Saturday
+  return YT_DATES.has(dateStr);
+}
+
+// Improved fuzzy matching — accepts partial slash answers, lenient spelling
+function fuzzy(a,b){
+  const n=s=>s.toLowerCase().trim().replace(/[^a-z0-9 ]/g,"").replace(/\s+/g," ");
+  const x=n(a),y=n(b);
+  if(x===y)return"exact";
+  // Split original on / before normalizing
+  const alts=b.split("/").map(s=>n(s.trim())).filter(Boolean);
+  for(const alt of alts)if(x===alt)return"exact";
+  // Remove stop words for core comparison
+  const sk=["the","a","an","to","of","is","it","in","for","he","she","one","who","its"];
+  const xc=x.split(" ").filter(w=>!sk.includes(w)).join(" ");
+  const yc=y.split(" ").filter(w=>!sk.includes(w)).join(" ");
+  if(xc&&xc===yc)return"exact";
+  // Check partial matches for each alt — if core words match, it's exact
+  for(const alt of alts){
+    const ac=alt.split(" ").filter(w=>!sk.includes(w)).join(" ");
+    if(xc===ac)return"exact";
+    if(ac.length>2&&lev(xc,ac)<=1)return"close";
+  }
+  // Check if all content words of input match all content words of answer (or vice versa)
+  const yw=yc.split(" ").filter(Boolean),xw=xc.split(" ").filter(Boolean);
+  if(yw.length>0&&yw.every(w=>xw.includes(w)))return"close";
+  if(xw.length>0&&xw.every(w=>yw.includes(w))&&xw.length>=yw.length*0.4)return"close";
+  // Generous levenshtein: allow 2 for short, 3 for longer
+  if(y.length>3&&lev(x,y)<=(y.length>8?3:2))return"close";
+  // Single word input matching first word of multi-word answer
+  if(xw.length===1&&yw.length>1&&yw[0]===xw[0])return"close";
+  return"wrong";
+}
+function lev(a,b){const m=a.length,n=b.length,d=Array.from({length:m+1},()=>Array(n+1).fill(0));for(let i=0;i<=m;i++)d[i][0]=i;for(let j=0;j<=n;j++)d[0][j]=j;for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)d[i][j]=a[i-1]===b[j-1]?d[i-1][j-1]:1+Math.min(d[i-1][j],d[i][j-1],d[i-1][j-1]);return d[m][n];}
+
+// Audio pronunciation (Web Speech API — Hebrew, best-effort for Aramaic)
+function speak(text){
+  if(!('speechSynthesis' in window))return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(stripN(text));
+  u.lang='he-IL';u.rate=0.75;u.pitch=1.0;
+  // Try to find a Hebrew voice
+  const voices=window.speechSynthesis.getVoices();
+  const hv=voices.find(v=>v.lang.startsWith('he'))||voices.find(v=>v.lang.startsWith('iw'));
+  if(hv)u.voice=hv;
+  window.speechSynthesis.speak(u);
+}
+// Preload voices
+if('speechSynthesis' in window){window.speechSynthesis.getVoices();window.speechSynthesis.onvoiceschanged=()=>window.speechSynthesis.getVoices();}
+
+// AI cache
+const _AIC={};
+function aiCacheKey(word,mode){return mode+"_"+word;}
+
+// ═══════════════════════════════════════════════════
+// AI
+// ═══════════════════════════════════════════════════
+const SYS=`You are a Gemara chavrusa for a frum yeshiva student learning vocab from Masechet Avodah Zarah, Perek HaSocher. Rules: 2-3 sentences MAX. ALWAYS write the Hebrew word with nekudot next to every transliteration like תָּנָא (tana) — the student needs to SEE the Hebrew letters to build recognition. Warm tone. For hints: NEVER reveal English.`;
+async function askAI(prompt,sys,mt){try{const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:prompt}],system:sys||SYS,max_tokens:mt||500})});const d=await r.json();return d.text||d.error||'No response';}catch{return'Could not connect.';}}
+async function askAICached(word,mode,prompt,sys,mt){
+  const ck=aiCacheKey(word,mode);
+  const cached=_AIC[ck]||LS.get("aic_"+ck);
+  if(cached){_AIC[ck]=cached;return cached;}
+  const r=await askAI(prompt,sys,mt);
+  _AIC[ck]=r;LS.set("aic_"+ck,r);return r;
+}
+async function analyzeWeak(ww,st){try{const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({weakWords:ww,stats:st})});const d=await r.json();return d.text||d.error||'No response';}catch{return'Could not connect.';}}
+
+// ═══════════════════════════════════════════════════
+// VOCAB DATA
+// ═══════════════════════════════════════════════════
+const TRK={gemara_structural:{id:"gemara_structural",n:"Gemara: Structure",i:"🏗️",c:"#C4956A"},gemara_content:{id:"gemara_content",n:"Gemara: AZ Content",i:"📖",c:"#8B6F4E"},rashi:{id:"rashi",n:"Rashi",i:"🔍",c:"#6B8E7B"},tosfos:{id:"tosfos",n:"Tosfos",i:"⚖️",c:"#7B7FA3"},rosh_hashanah:{id:"rosh_hashanah",n:"Rosh Hashanah Ch.3",i:"📯",c:"#B8860B"}};
+const V={
+gemara_structural:[
+{h:"אָמַר",t:"amar",e:"said",c:"speech"},{h:"תָּנָא",t:"tana",e:"a Tanna taught",c:"teaching"},{h:"תְּנַן",t:"t'nan",e:"we learned in a Mishnah",c:"teaching"},{h:"תַּנְיָא",t:"tanya",e:"it was taught in a Baraisa",c:"teaching"},{h:"בָּעֵי",t:"ba'i",e:"asks / inquires",c:"questioning"},{h:"מַאי",t:"mai",e:"what?",c:"questioning"},{h:"הֵיכִי",t:"heichi",e:"how?",c:"questioning"},{h:"אֶלָּא",t:"ela",e:"rather / but rather",c:"logic"},{h:"וְהָא",t:"v'ha",e:"but isn't it?",c:"logic"},{h:"קַשְׁיָא",t:"kashya",e:"difficulty / contradiction",c:"logic"},
+{h:"תֵּיקוּ",t:"teiku",e:"unresolved / let it stand",c:"resolution"},{h:"תָּנוּ רַבָּנָן",t:"tanu rabbanan",e:"the Rabbis taught",c:"teaching"},{h:"אִיתְּמַר",t:"itmar",e:"it was stated",c:"speech"},{h:"מִנָּא הָנֵי מִילֵּי",t:"mina hanei milei",e:"from where are these words derived?",c:"questioning"},{h:"שְׁמַע מִינַּהּ",t:"shma minah",e:"conclude from this",c:"resolution"},{h:"פְּשִׁיטָא",t:"peshita",e:"it's obvious!",c:"logic"},{h:"מַתְנִיתִין",t:"matnitin",e:"our Mishnah",c:"teaching"},{h:"לֵימָא",t:"leima",e:"shall we say?",c:"questioning"},{h:"מַהוּ",t:"mahu",e:"what is the law?",c:"questioning"},{h:"אִי",t:"ee",e:"if",c:"logic"},
+{h:"דִּילְמָא",t:"dilma",e:"perhaps",c:"logic"},{h:"הָכָא",t:"hacha",e:"here",c:"reference"},{h:"הָתָם",t:"hasam",e:"there",c:"reference"},{h:"מִדְּאוֹרַיְתָא",t:"mid'oraisa",e:"from the Torah / Biblical",c:"source"},{h:"מִדְּרַבָּנָן",t:"mid'rabbanan",e:"from the Rabbis / Rabbinic",c:"source"},{h:"לָא",t:"la",e:"no / not",c:"logic"},{h:"אִין",t:"in",e:"yes",c:"logic"},{h:"נָמֵי",t:"nami",e:"also",c:"logic"},{h:"הָכִי",t:"hachi",e:"so / thus",c:"reference"},{h:"מַאן",t:"man",e:"who?",c:"questioning"},
+{h:"דְּאָמַר",t:"d'amar",e:"who says / that said",c:"speech"},{h:"רַב",t:"rav",e:"Rav / master",c:"titles"},{h:"אֲמַר לֵיהּ",t:"amar lei",e:"he said to him",c:"speech"},{h:"סְבָרָא",t:"svara",e:"reasoning / logic",c:"logic"},{h:"הַיְינוּ",t:"haynu",e:"that is / meaning",c:"logic"},{h:"מַאי שְׁנָא",t:"mai shna",e:"what is different?",c:"questioning"},{h:"לְעוֹלָם",t:"l'olam",e:"actually / in truth",c:"logic"},{h:"מַתְקֵיף",t:"maskif",e:"objects / challenges",c:"logic"},{h:"מֵיתִיבִי",t:"meisivi",e:"they challenged from a Baraisa",c:"logic"},{h:"תָּא שְׁמַע",t:"ta shma",e:"come and hear / proof",c:"logic"},
+{h:"אִיכָּא",t:"ika",e:"there is",c:"reference"},{h:"לֵיכָּא",t:"leika",e:"there is not",c:"reference"},{h:"צְרִיכָא",t:"tzricha",e:"it is necessary",c:"logic"},{h:"מְנָלָן",t:"m'nalan",e:"from where do we know?",c:"questioning"},{h:"דִּכְתִיב",t:"dichtiv",e:"as it is written",c:"source"},{h:"וְכִי",t:"v'chi",e:"and is it so?",c:"questioning"},{h:"כְּדִתְנַן",t:"k'dis'nan",e:"as we learned",c:"teaching"},{h:"אֲפִילּוּ",t:"afilu",e:"even",c:"logic"},{h:"מִיהוּ",t:"mihu",e:"however / but",c:"logic"},{h:"הָנֵי מִילֵּי",t:"hanei milei",e:"these words / this applies",c:"logic"},
+],
+gemara_content:[
+{h:"יַיִן",t:"yayin",e:"wine",c:"AZ"},{h:"יֵין נֶסֶךְ",t:"yein nesech",e:"wine of libation / idolatry",c:"AZ"},{h:"סְתַם יֵינָם",t:"stam yeinam",e:"ordinary gentile wine",c:"AZ"},{h:"עֲבוֹדָה זָרָה",t:"avodah zarah",e:"idol worship / idolatry",c:"AZ"},{h:"גּוֹי",t:"goy",e:"non-Jew / gentile",c:"people"},{h:"יִשְׂרָאֵל",t:"yisrael",e:"a Jew / Israel",c:"people"},{h:"נָגַע",t:"naga",e:"touched",c:"action"},{h:"אָסוּר",t:"asur",e:"forbidden",c:"halacha"},{h:"מוּתָּר",t:"mutar",e:"permitted",c:"halacha"},{h:"הֲנָאָה",t:"hana'ah",e:"benefit / pleasure",c:"halacha"},
+{h:"בְּהֲנָאָה",t:"b'hana'ah",e:"in benefit",c:"halacha"},{h:"שְׁתִיָּה",t:"shtiya",e:"drinking",c:"action"},{h:"דָּרַךְ",t:"darach",e:"tread / press grapes",c:"action"},{h:"שׁוֹכֵר",t:"socher",e:"one who rents / hires",c:"people"},{h:"פּוֹעֵל",t:"po'el",e:"worker / laborer",c:"people"},{h:"גַּת",t:"gas",e:"winepress",c:"objects"},{h:"חָבִית",t:"chavis",e:"barrel",c:"objects"},{h:"כֶּלִי",t:"kli",e:"vessel / utensil",c:"objects"},{h:"טָמֵא",t:"tamei",e:"impure / contaminated",c:"halacha"},{h:"טָהוֹר",t:"tahor",e:"pure / clean",c:"halacha"},
+{h:"נִיצוֹק",t:"nitzok",e:"poured stream / connected flow",c:"AZ"},{h:"מָשַׁךְ",t:"mashach",e:"pulled / drew",c:"action"},{h:"שָׁפַךְ",t:"shafach",e:"poured",c:"action"},{h:"שָׁכַר",t:"sachar",e:"hired / rented",c:"action"},{h:"דָּמִים",t:"damim",e:"money / payment",c:"commerce"},{h:"קָנָה",t:"kanah",e:"acquired / bought",c:"commerce"},{h:"מָכַר",t:"machar",e:"sold",c:"commerce"},{h:"חוֹמֶר",t:"chomer",e:"stringency",c:"halacha"},{h:"קוּלָא",t:"kula",e:"leniency",c:"halacha"},{h:"לְכַתְּחִילָה",t:"l'chatchila",e:"from the outset / ideally",c:"halacha"},
+{h:"בְּדִיעֲבַד",t:"b'di'eved",e:"after the fact",c:"halacha"},{h:"חֲמָרָא",t:"chamra",e:"wine (Aramaic)",c:"AZ"},{h:"דִּינָא",t:"dina",e:"law / judgment",c:"halacha"},{h:"מַמּוֹנָא",t:"mamona",e:"money / property",c:"commerce"},{h:"שְׂכָרוֹ",t:"s'charo",e:"his wages / rental fee",c:"commerce"},{h:"זוּזֵי",t:"zuzei",e:"coins / money",c:"commerce"},{h:"שֶׁבַח",t:"shevach",e:"improvement / enhancement",c:"commerce"},{h:"הַכְשֵׁר",t:"hechsher",e:"preparation / enabling",c:"halacha"},{h:"בִּיתָא",t:"beisa",e:"house (Aramaic)",c:"objects"},{h:"מֶכֶר",t:"mecher",e:"sale",c:"commerce"},
+],
+rashi:[
+{h:"כְּלוֹמַר",t:"k'lomar",e:"that is to say",c:"explanation"},{h:"פֵּירוּשׁ",t:"peirush",e:"explanation / meaning",c:"explanation"},{h:"דְּהַיְינוּ",t:"d'haynu",e:"that is / meaning",c:"explanation"},{h:"עַל כָּרְחֲךָ",t:"al korchach",e:"you are forced to say",c:"logic"},{h:"לָאו",t:"lav",e:"is it not? / no",c:"logic"},{h:"הָא",t:"ha",e:"this / behold",c:"reference"},{h:"שֶׁהֲרֵי",t:"sheharei",e:"for behold / since",c:"logic"},{h:"לִשְׁנָא אַחֲרִינָא",t:"lishna acharina",e:"another version / wording",c:"structure"},{h:"נִרְאֶה לִי",t:"nireh li",e:"it seems to me",c:"opinion"},{h:"וְיֵשׁ לוֹמַר",t:"v'yesh lomar",e:"and one can say",c:"opinion"},
+{h:"קָאֵי",t:"ka'i",e:"stands / refers to",c:"reference"},{h:"לְפִי שֶׁ",t:"l'fi she",e:"because",c:"logic"},{h:"דַּוְקָא",t:"davka",e:"specifically / precisely",c:"logic"},{h:"לָאו דַּוְקָא",t:"lav davka",e:"not specifically / loosely",c:"logic"},{h:"קָמַשְׁמַע לַן",t:"ka mashma lan",e:"it teaches us",c:"teaching"},{h:"מִשּׁוּם",t:"mishum",e:"because of",c:"logic"},{h:"כְּגוֹן",t:"k'gon",e:"such as / for example",c:"explanation"},{h:"וְעוֹד",t:"v'od",e:"and furthermore",c:"logic"},{h:"סֵיפָא",t:"seifa",e:"the end of the Mishnah",c:"structure"},{h:"רֵישָׁא",t:"reisha",e:"the beginning of the Mishnah",c:"structure"},
+{h:"מְתָרֵץ",t:"m'taretz",e:"answers / resolves",c:"logic"},{h:"בָּבָא",t:"bava",e:"section / clause",c:"structure"},{h:"עִנְיָן",t:"inyan",e:"topic / matter",c:"reference"},{h:"אוֹ",t:"o",e:"or",c:"logic"},{h:"עֵינֵיהֶם",t:"eineihem",e:"their eyes (euphemism)",c:"reference"},
+],
+tosfos:[
+{h:"וְאִם תֹּאמַר",t:"v'im tomar",e:"and if you will say",c:"structure"},{h:"וְיֵשׁ לוֹמַר",t:"v'yesh lomar",e:"and one can answer",c:"structure"},{h:"תֵּימָא",t:"teima",e:"you might say",c:"logic"},{h:"קָשֶׁה",t:"kashe",e:"it is difficult",c:"logic"},{h:"דּוֹחֶה",t:"doche",e:"pushes away / rejects",c:"logic"},{h:"סוֹבֵר",t:"sover",e:"holds / maintains an opinion",c:"opinion"},{h:"חוֹלֵק",t:"cholek",e:"disagrees",c:"opinion"},{h:"רַבֵּנוּ תָּם",t:"rabbeinu tam",e:"Rabbeinu Tam",c:"people"},{h:"דְּלָא כְּ",t:"d'la k'",e:"not in accordance with",c:"logic"},{h:"עַל פִּי",t:"al pi",e:"according to",c:"logic"},
+{h:"צָרִיךְ לוֹמַר",t:"tzarich lomar",e:"one must say",c:"logic"},{h:"הָכָא נָמֵי",t:"hacha nami",e:"here also",c:"reference"},{h:"בְּרֵישׁ פֶּרֶק",t:"b'reish perek",e:"at the beginning of the chapter",c:"structure"},{h:"לְקַמָּן",t:"l'kaman",e:"later / further on",c:"reference"},{h:"לְעֵיל",t:"l'eil",e:"above / earlier",c:"reference"},{h:"מוֹכִיחַ",t:"mochiach",e:"proves",c:"logic"},{h:"דָּמֵי",t:"damei",e:"is similar to",c:"logic"},{h:"הָרְאָיָה",t:"har'aya",e:"the proof",c:"logic"},{h:"רַשִׁ\"י",t:"rashi",e:"Rashi",c:"people"},{h:"הָר\"י",t:"ha'ri",e:"the Ri / R' Yitzchak",c:"people"},
+],
+rosh_hashanah:[
+{h:"שׁוֹפָר",t:"shofar",e:"ram's horn / shofar",c:"shofar"},{h:"תְּקִיעָה",t:"tekiah",e:"long blast",c:"shofar"},{h:"תְּרוּעָה",t:"teruah",e:"broken / staccato blast",c:"shofar"},{h:"שְׁבָרִים",t:"shevarim",e:"three medium blasts",c:"shofar"},{h:"תּוֹקֵעַ",t:"tokeia",e:"one who blows the shofar",c:"shofar"},{h:"שׁוֹמֵעַ",t:"shomeia",e:"one who hears / listens",c:"halacha"},{h:"אַיִל",t:"ayil",e:"ram",c:"shofar"},{h:"קֶרֶן",t:"keren",e:"horn",c:"shofar"},{h:"כָּשֵׁר",t:"kasher",e:"valid / fit",c:"halacha"},{h:"פָּסוּל",t:"pasul",e:"invalid / disqualified",c:"halacha"},
+{h:"חַיָּב",t:"chayav",e:"obligated",c:"halacha"},{h:"פָּטוּר",t:"patur",e:"exempt",c:"halacha"},{h:"יָצָא",t:"yatza",e:"fulfilled his obligation",c:"halacha"},{h:"כַּוָּנָה",t:"kavanah",e:"intention",c:"halacha"},{h:"מִצְוָה",t:"mitzvah",e:"commandment",c:"halacha"},{h:"בְּרָכָה",t:"brachah",e:"blessing",c:"tefilla"},{h:"נִסְדַּק",t:"nisdak",e:"cracked",c:"shofar"},{h:"דִּבֵּק",t:"dibeik",e:"glued / joined",c:"shofar"},{h:"צִפָּהוּ",t:"tzipahu",e:"plated / covered it",c:"shofar"},{h:"זָהָב",t:"zahav",e:"gold",c:"shofar"},
+{h:"מְעַכֵּב",t:"me'akeiv",e:"essential / prevents",c:"halacha"},{h:"בּוֹר",t:"bor",e:"pit / cistern",c:"sugya"},{h:"הֶבֶל",t:"hevel",e:"echo / sound",c:"sugya"},{h:"יוֹבֵל",t:"yovel",e:"jubilee year",c:"halacha"},{h:"מַלְכֻיּוֹת",t:"malchuyot",e:"sovereignty verses",c:"tefilla"},{h:"זִכְרוֹנוֹת",t:"zichronot",e:"remembrance verses",c:"tefilla"},{h:"שׁוֹפָרוֹת",t:"shofarot",e:"shofar verses",c:"tefilla"},{h:"פָּשׁוּט",t:"pashut",e:"simple / straight sound",c:"shofar"},{h:"גְּנוּבָה",t:"genuvah",e:"stolen",c:"sugya"},{h:"עָבַר",t:"avar",e:"passed before / transgressed",c:"halacha"},
+],
+};
+
+// ═══════════════════════════════════════════════════
+// ENRICHMENT DATA
+// ═══════════════════════════════════════════════════
+const _RG=[
+  ["שׂ-כ-ר (hire/rent)",["gemara_content_13","gemara_content_23","gemara_content_34"]],
+  ["א-מ-ר (say)",["gemara_structural_0","gemara_structural_12","gemara_structural_30","gemara_structural_32"]],
+  ["ת-נ-א (teach)",["gemara_structural_1","gemara_structural_2","gemara_structural_3","gemara_structural_11","gemara_structural_46"]],
+  ["ק-ש-ה (difficult)",["gemara_structural_9","tosfos_3"]],
+  ["מ-כ-ר (sell)",["gemara_content_26","gemara_content_39"]],
+  ["ל-מ-ר (say/tell)",["rashi_0","rashi_9","tosfos_1","tosfos_10"]],
+  ["י-י-ן (wine)",["gemara_content_0","gemara_content_1","gemara_content_2","gemara_content_31"]],
+  ["ש-מ-ע (hear)",["gemara_structural_14","gemara_structural_39","rashi_14"]],
+  ["ד-מ-ה (similar)",["tosfos_16","gemara_content_24"]],
+  ["כ-ת-ב (write)",["gemara_structural_44"]],
+];
+const RMAP={};_RG.forEach(([sh,ks])=>ks.forEach(k=>RMAP[k]={sh,rel:ks.filter(x=>x!==k)}));
+const PAIRS=[
+  ["gemara_content_7","gemara_content_8"],["gemara_content_18","gemara_content_19"],
+  ["gemara_content_27","gemara_content_28"],["gemara_content_29","gemara_content_30"],
+  ["gemara_structural_21","gemara_structural_22"],["gemara_structural_40","gemara_structural_41"],
+  ["gemara_structural_25","gemara_structural_26"],["gemara_structural_23","gemara_structural_24"],
+  ["rashi_12","rashi_13"],["rashi_18","rashi_19"],["tosfos_13","tosfos_14"],
+];
+const PMAP={};PAIRS.forEach(([a,b])=>{PMAP[a]=b;PMAP[b]=a;});
+const PREFIXES={
+  "gemara_structural_23":[{p:"מִ",m:"from"},{p:"דְּ",m:"of"},{p:"אוֹרַיְתָא",m:"Torah"}],
+  "gemara_structural_24":[{p:"מִ",m:"from"},{p:"דְּ",m:"of"},{p:"רַבָּנָן",m:"Rabbis"}],
+  "gemara_structural_30":[{p:"דְּ",m:"who/that"},{p:"אָמַר",m:"said"}],
+  "gemara_structural_44":[{p:"דְּ",m:"that"},{p:"כְתִיב",m:"is written"}],
+  "gemara_structural_46":[{p:"כְּ",m:"as"},{p:"דְּ",m:"that"},{p:"תְנַן",m:"we learned"}],
+  "gemara_content_10":[{p:"בְּ",m:"in/with"},{p:"הֲנָאָה",m:"benefit"}],
+  "gemara_content_30":[{p:"בְּ",m:"in"},{p:"דִיעֲבַד",m:"already done"}],
+  "gemara_content_29":[{p:"לְ",m:"for"},{p:"כַתְּחִילָה",m:"the beginning"}],
+  "rashi_0":[{p:"כְּ",m:"as/like"},{p:"לוֹמַר",m:"to say"}],
+  "rashi_2":[{p:"דְּ",m:"that"},{p:"הַיְינוּ",m:"is/means"}],
+  "rashi_6":[{p:"שֶׁ",m:"that/for"},{p:"הֲרֵי",m:"behold"}],
+  "rashi_11":[{p:"לְפִי",m:"according to"},{p:"שֶׁ",m:"that"}],
+  "tosfos_8":[{p:"דְּ",m:"that"},{p:"לָא",m:"not"},{p:"כְּ",m:"like"}],
+  "tosfos_11":[{p:"הָכָא",m:"here"},{p:"נָמֵי",m:"also"}],
+};
+function wByKey(k){const p=k.split("_"),idx=parseInt(p.pop()),tr=p.join("_");return V[tr]?.[idx];}
+
+// ═══════════════════════════════════════════════════
+// FILL-IN-THE-BLANK (expanded to 30)
+// ═══════════════════════════════════════════════════
+const BLANKS=[
+  {ph:"הַ_____ אֶת הַפּוֹעֵל לַעֲשׂוֹת עִמּוֹ",hint:"One who _____ the worker to work with him",ak:"gemara_content_13"},
+  {ph:"_____ רַב יְהוּדָה אָמַר רַב",hint:"_____ Rav Yehuda in the name of Rav",ak:"gemara_structural_0"},
+  {ph:"_____ טַעְמָא דְּרַב",hint:"_____ is the reason of Rav?",ak:"gemara_structural_5"},
+  {ph:"שְׂכָרוֹ _____",hint:"His wages are _____",ak:"gemara_content_7"},
+  {ph:"_____ שְׁמַע",hint:"_____ and hear — bringing a proof",ak:"gemara_structural_39"},
+  {ph:"_____ אָמַר רַב נַחְמָן",hint:"_____ said Rav Nachman — rejecting previous answer",ak:"gemara_structural_7"},
+  {ph:"_____ בְּמַאי עָסְקִינַן",hint:"_____ what case are we dealing?",ak:"gemara_structural_21"},
+  {ph:"_____ מִינַּהּ",hint:"_____ from this — a conclusion",ak:"gemara_structural_14"},
+  {ph:"הַגּוֹי _____ בַּיַּיִן",hint:"The gentile _____ the wine",ak:"gemara_content_6"},
+  {ph:"דָּבָר זֶה _____ אוֹ מוּתָּר",hint:"Is this _____ or permitted?",ak:"gemara_content_7"},
+  {ph:"מַתְנִיתִין דְּלָא כְּ_____",hint:"Our Mishnah is not like _____",ak:"gemara_structural_31"},
+  {ph:"_____ לוֹמַר",hint:"One _____ say — Tosfos resolving a difficulty",ak:"tosfos_10"},
+  {ph:"_____ פֵּירוּשׁ",hint:"_____ is to say — Rashi explaining",ak:"rashi_0"},
+  {ph:"בֵּין לְכַתְּחִילָה בֵּין _____",hint:"Whether ideally or _____",ak:"gemara_content_30"},
+  {ph:"_____ הָנֵי מִילֵּי",hint:"From where are _____ words derived?",ak:"gemara_structural_13"},
+  // New 15
+  {ph:"הַיַּיִן _____ בִּשְׁתִיָּה",hint:"The wine is _____ for drinking",ak:"gemara_content_7"},
+  {ph:"_____ רַבָּנָן",hint:"The _____ taught",ak:"gemara_structural_11"},
+  {ph:"_____ דִּילְמָא",hint:"_____ perhaps it's different?",ak:"gemara_structural_7"},
+  {ph:"_____ קָמַשְׁמַע לַן",hint:"_____ does it teach us?",ak:"gemara_structural_5"},
+  {ph:"שְׂכָרוֹ _____ בַּהֲנָאָה",hint:"His wages are _____ in benefit",ak:"gemara_content_7"},
+  {ph:"_____ תֹּאמַר",hint:"And if you will _____",ak:"tosfos_0"},
+  {ph:"_____ קָשֶׁה",hint:"And _____ is difficult",ak:"tosfos_3"},
+  {ph:"_____ כָּרְחֲךָ",hint:"You are _____ to say",ak:"rashi_3"},
+  {ph:"הָ_____ מוּתָּר וְהָ_____ אָסוּר",hint:"_____ is permitted and _____ is forbidden",ak:"rashi_5"},
+  {ph:"_____ שְׁנָא הָכָא",hint:"What is _____ here?",ak:"gemara_structural_35"},
+  {ph:"הַ_____ הַזֶּה טָמֵא",hint:"This _____ is impure",ak:"gemara_content_17"},
+  {ph:"דָּרַךְ בַּ_____",hint:"He tread in the _____",ak:"gemara_content_15"},
+  {ph:"שָׁפַךְ מִן הַ_____",hint:"He poured from the _____",ak:"gemara_content_16"},
+  {ph:"_____ נָמֵי הָכִי",hint:"_____ also so",ak:"gemara_structural_27"},
+  {ph:"_____ שֶׁנִּסְדַּק וְדִבְּקוֹ",hint:"A _____ that cracked and was glued",ak:"rosh_hashanah_0"},
+  {ph:"צִפָּהוּ _____ מִבִּפְנִים פָּסוּל",hint:"Plated with _____ on the inside — invalid",ak:"rosh_hashanah_19"},
+  {ph:"הַתּוֹקֵעַ לְתוֹךְ הַ_____",hint:"One who blows into the _____",ak:"rosh_hashanah_21"},
+  {ph:"קוֹל _____ שָׁמַע לֹא יָצָא",hint:"If he heard the _____, he did not fulfill",ak:"rosh_hashanah_22"},
+  {ph:"מִצְוַת שׁוֹפָר בְּ_____ תַּלְיָא",hint:"Shofar mitzvah depends on _____",ak:"rosh_hashanah_13"},
+  {ph:"שׁוֹפָר שֶׁל _____ כָּשֵׁר",hint:"A shofar of the _____ is valid",ak:"rosh_hashanah_23"},
+  {ph:"_____ וּתְרוּעָה וּתְקִיעָה",hint:"A _____, teruah, and tekiah",ak:"rosh_hashanah_1"},
+  {ph:"שׁוֹפָר _____ תָּקַע בּוֹ יָצָא",hint:"A _____ shofar — if one blew, he fulfilled",ak:"rosh_hashanah_28"},
+];
+
+// ═══════════════════════════════════════════════════
+// GEMARA LINES (expanded to 30)
+// ═══════════════════════════════════════════════════
+const LINES=[
+{parts:[{h:"הַשּׂוֹכֵר",e:"One who hires"},{h:"אֶת",e:"(obj.)"},{h:"הַפּוֹעֵל",e:"a worker"},{h:"לַעֲשׂוֹת",e:"to work"},{h:"עִמּוֹ",e:"with him"},{h:"בְּיֵין נֶסֶךְ",e:"with libation wine"},{h:"שְׂכָרוֹ",e:"his wages"},{h:"אָסוּר",e:"are forbidden"}],full:"One who hires a worker to work with him with libation wine — his wages are forbidden."},
+{parts:[{h:"אָמַר",e:"said"},{h:"רַב",e:"Rav"},{h:"יְהוּדָה",e:"Yehuda"},{h:"אָמַר",e:"said"},{h:"רַב",e:"Rav"},{h:"אָסוּר",e:"it is forbidden"},{h:"לָאָדָם",e:"for a person"},{h:"שֶׁיֹּאמַר",e:"to say"},{h:"לְגוֹי",e:"to a gentile"}],full:"Rav Yehuda said in the name of Rav: It is forbidden for a person to say to a gentile..."},
+{parts:[{h:"מַאי",e:"What?"},{h:"טַעְמָא",e:"is the reason"},{h:"דְּרַב",e:"of Rav"},{h:"דְּאָמַר",e:"who says"},{h:"שְׂכָרוֹ",e:"his wages"},{h:"אָסוּר",e:"are forbidden"}],full:"What is the reasoning of Rav, who says his wages are forbidden?"},
+{parts:[{h:"אֶלָּא",e:"Rather"},{h:"אָמַר",e:"said"},{h:"רַב",e:"Rav"},{h:"נַחְמָן",e:"Nachman"},{h:"הָכָא",e:"here"},{h:"בְּמַאי",e:"with what"},{h:"עָסְקִינַן",e:"are we dealing"},{h:"כְּגוֹן",e:"such as"}],full:"Rather, Rav Nachman said: here, what case are we dealing with? Such as..."},
+{parts:[{h:"וְהָא",e:"But isn't"},{h:"תְּנַן",e:"we learned"},{h:"שְׂכָרוֹ",e:"his wages"},{h:"מוּתָּר",e:"permitted"}],full:"But didn't we learn that his wages are permitted?"},
+{parts:[{h:"פְּשִׁיטָא",e:"Obviously!"},{h:"מַאי",e:"What"},{h:"קָמַשְׁמַע לַן",e:"does it teach us?"}],full:"Obviously! What is it teaching us?"},
+// New lines 7-29
+{parts:[{h:"תָּנוּ רַבָּנָן",e:"The Rabbis taught"},{h:"הַשּׂוֹכֵר",e:"one who hires"},{h:"אֶת",e:"(obj.)"},{h:"הַפּוֹעֵל",e:"the worker"},{h:"לְהוֹלִיךְ",e:"to transport"},{h:"יֵין נֶסֶךְ",e:"libation wine"}],full:"The Rabbis taught: One who hires a worker to transport libation wine..."},
+{parts:[{h:"שְׁמַע מִינַּהּ",e:"Conclude from this"},{h:"שְׂכָרוֹ",e:"his wages"},{h:"אָסוּר",e:"are forbidden"},{h:"בַּהֲנָאָה",e:"in benefit"}],full:"Conclude from this: his wages are forbidden in benefit."},
+{parts:[{h:"אִיתְּמַר",e:"It was stated"},{h:"הַגּוֹי",e:"a gentile"},{h:"שֶׁנָּגַע",e:"who touched"},{h:"בַּיַּיִן",e:"the wine"},{h:"שֶׁלָּנוּ",e:"that is ours"}],full:"It was stated: a gentile who touched our wine..."},
+{parts:[{h:"מַאי",e:"What"},{h:"שְׁנָא",e:"is different"},{h:"הָכָא",e:"here"},{h:"מֵהָתָם",e:"from there"}],full:"What is different here from there?"},
+{parts:[{h:"לְעוֹלָם",e:"Actually"},{h:"אֵימָא",e:"I would say"},{h:"לְכַתְּחִילָה",e:"from the outset"},{h:"אָסוּר",e:"it is forbidden"}],full:"Actually, I would say: from the outset it is forbidden."},
+{parts:[{h:"מֵיתִיבִי",e:"They challenged"},{h:"הַשּׂוֹכֵר",e:"one who hires"},{h:"אֶת",e:"(obj.)"},{h:"הַגּוֹי",e:"the gentile"},{h:"לְדָרֵךְ",e:"to tread"},{h:"בְּגִתּוֹ",e:"in his winepress"}],full:"They challenged: One who hires a gentile to tread in his winepress..."},
+{parts:[{h:"דִּילְמָא",e:"Perhaps"},{h:"שָׁאנֵי",e:"it is different"},{h:"הָכָא",e:"here"},{h:"דְּאִיכָּא",e:"because there is"},{h:"חֲמָרָא",e:"wine"}],full:"Perhaps it is different here because there is wine involved."},
+{parts:[{h:"בְּדִיעֲבַד",e:"After the fact"},{h:"מוּתָּר",e:"it is permitted"},{h:"אֲפִילּוּ",e:"even"},{h:"בִּשְׁתִיָּה",e:"for drinking"}],full:"After the fact, it is permitted even for drinking."},
+{parts:[{h:"מַתְנִיתִין",e:"Our Mishnah"},{h:"מַאן",e:"who"},{h:"תָּנָא",e:"taught it?"},{h:"אָמַר",e:"Said"},{h:"רַב",e:"Rav"},{h:"יוֹסֵף",e:"Yosef"}],full:"Our Mishnah — who taught it? Said Rav Yosef..."},
+{parts:[{h:"תָּא שְׁמַע",e:"Come and hear"},{h:"דְּאָמַר",e:"for it was said"},{h:"רַב",e:"Rav"},{h:"נָמֵי",e:"also"},{h:"הָכִי",e:"so"}],full:"Come and hear, for Rav also said so."},
+{parts:[{h:"מַתְקֵיף",e:"Challenges"},{h:"לַהּ",e:"it"},{h:"רַב",e:"Rav"},{h:"אָשֵׁי",e:"Ashi"},{h:"וְהָא",e:"but isn't"},{h:"מוּתָּר",e:"it permitted?"}],full:"Rav Ashi challenges this: but isn't it permitted?"},
+{parts:[{h:"אֲמַר לֵיהּ",e:"He said to him"},{h:"אִין",e:"yes"},{h:"הָכִי",e:"so it is"},{h:"דִּינָא",e:"the law"}],full:"He said to him: Yes, so is the law."},
+{parts:[{h:"תַּנְיָא",e:"It was taught"},{h:"נָמֵי",e:"also"},{h:"הָכִי",e:"so"},{h:"כְּדִתְנַן",e:"as we learned"}],full:"It was also taught so, as we learned in the Mishnah."},
+{parts:[{h:"בָּעֵי",e:"Asked"},{h:"רַב",e:"Rav"},{h:"זֵירָא",e:"Zeira"},{h:"מַהוּ",e:"what is the law"},{h:"לִמְכּוֹר",e:"to sell"},{h:"לְגוֹי",e:"to a gentile"}],full:"Rav Zeira asked: what is the law regarding selling to a gentile?"},
+{parts:[{h:"הֵיכִי",e:"How"},{h:"דָּמֵי",e:"is it similar"},{h:"אִי",e:"if"},{h:"דְּנָגַע",e:"he touched"},{h:"בּוֹ",e:"it"}],full:"What is the case? If he touched it..."},
+{parts:[{h:"תֵּיקוּ",e:"Let it stand"},{h:"בָּעְיָא",e:"the question"},{h:"דְּרַב",e:"of Rav"},{h:"זֵירָא",e:"Zeira"}],full:"The question of Rav Zeira remains unresolved."},
+{parts:[{h:"אֶלָּא",e:"Rather"},{h:"אִי",e:"if"},{h:"אִיתְּמַר",e:"it was stated"},{h:"הָכִי",e:"thus"},{h:"אִיתְּמַר",e:"it was stated"}],full:"Rather, if it was stated, it was stated thus."},
+{parts:[{h:"סְבָרָא",e:"Reasoning"},{h:"הִיא",e:"it is"},{h:"לָא",e:"no"},{h:"צְרִיכָא",e:"need"},{h:"קְרָא",e:"a verse"}],full:"It is reasoning — no verse is needed."},
+{parts:[{h:"מִנָּא",e:"From where"},{h:"הָנֵי מִילֵּי",e:"are these words"},{h:"דִּכְתִיב",e:"as it is written"}],full:"From where do we derive this? As it is written..."},
+{parts:[{h:"קַשְׁיָא",e:"Difficulty!"},{h:"הָא",e:"This"},{h:"דְּאָמַר",e:"that says"},{h:"אָסוּר",e:"forbidden"},{h:"וְהָא",e:"and this"},{h:"דְּאָמַר",e:"that says"},{h:"מוּתָּר",e:"permitted"}],full:"Difficulty! This says forbidden, and this says permitted!"},
+{parts:[{h:"לָא",e:"No"},{h:"קַשְׁיָא",e:"difficulty"},{h:"הָא",e:"this"},{h:"לְכַתְּחִילָה",e:"from the outset"},{h:"הָא",e:"this"},{h:"בְּדִיעֲבַד",e:"after the fact"}],full:"No difficulty: this is from the outset, this is after the fact."},
+{parts:[{h:"מַמּוֹנָא",e:"Property"},{h:"דְּיִשְׂרָאֵל",e:"of a Jew"},{h:"הוּא",e:"it is"},{h:"וּשְׂכָרוֹ",e:"and his wages"},{h:"מוּתָּר",e:"are permitted"}],full:"It is the property of a Jew, and his wages are permitted."},
+{parts:[{h:"וְכִי",e:"And is it so"},{h:"מַאי",e:"what"},{h:"חוֹמֶר",e:"stringency"},{h:"אִיכָּא",e:"is there"},{h:"הָכָא",e:"here"}],full:"And is it so? What stringency is there here?"},
+{parts:[{h:"מִיהוּ",e:"However"},{h:"אָמַר",e:"said"},{h:"רַב",e:"Rav"},{h:"הוּנָא",e:"Huna"},{h:"מִדְּרַבָּנָן",e:"from the Rabbis"},{h:"אָסוּר",e:"it is forbidden"}],full:"However, Rav Huna said: from the Rabbis, it is forbidden."},
+// Rosh Hashanah Perek 3
+{parts:[{h:"שׁוֹפָר",e:"A shofar"},{h:"שֶׁנִּסְדַּק",e:"that cracked"},{h:"וְדִבְּקוֹ",e:"and one glued it"},{h:"פָּסוּל",e:"it is invalid"}],full:"A shofar that cracked and one glued it — it is invalid."},
+{parts:[{h:"צִפָּהוּ",e:"If he plated it"},{h:"זָהָב",e:"with gold"},{h:"מִבִּפְנִים",e:"on the inside"},{h:"פָּסוּל",e:"it is invalid"}],full:"If he plated it with gold on the inside — it is invalid."},
+{parts:[{h:"הַתּוֹקֵעַ",e:"One who blows"},{h:"לְתוֹךְ",e:"into"},{h:"הַבּוֹר",e:"the pit"},{h:"אִם",e:"if"},{h:"קוֹל",e:"the sound of"},{h:"שׁוֹפָר",e:"the shofar"},{h:"שָׁמַע",e:"he heard"},{h:"יָצָא",e:"he fulfilled"}],full:"One who blows into the pit — if he heard the shofar sound, he fulfilled his obligation."},
+{parts:[{h:"וְאִם",e:"And if"},{h:"קוֹל",e:"the sound of"},{h:"הֶבֶל",e:"the echo"},{h:"שָׁמַע",e:"he heard"},{h:"לֹא",e:"he did not"},{h:"יָצָא",e:"fulfill"}],full:"And if he heard the echo, he did not fulfill his obligation."},
+{parts:[{h:"מִצְוַת",e:"The mitzvah of"},{h:"שׁוֹפָר",e:"shofar"},{h:"בְּכַוָּנָה",e:"requires intention"},{h:"תַּלְיָא",e:"depends"}],full:"The mitzvah of shofar depends on intention."},
+{parts:[{h:"שׁוֹפָר",e:"A shofar"},{h:"שֶׁל",e:"of"},{h:"יוֹבֵל",e:"the jubilee"},{h:"כָּשֵׁר",e:"is valid"},{h:"לְרֹאשׁ הַשָּׁנָה",e:"for Rosh Hashanah"}],full:"A shofar of the jubilee is valid for Rosh Hashanah."},
+{parts:[{h:"תְּקִיעָה",e:"A tekiah"},{h:"וּתְרוּעָה",e:"and a teruah"},{h:"וּתְקִיעָה",e:"and a tekiah"},{h:"שְׁלָשְׁתָּן",e:"all three"},{h:"כְּאַחַת",e:"together"}],full:"Tekiah, teruah, and tekiah — all three are one unit."},
+{parts:[{h:"שְׁלִיחַ",e:"An agent of"},{h:"צִבּוּר",e:"the community"},{h:"מוֹצִיא",e:"fulfills for"},{h:"אֶת",e:""},{h:"הָרַבִּים",e:"the public"}],full:"The prayer leader fulfills the obligation for the public."},
+{parts:[{h:"מַלְכֻיּוֹת",e:"Sovereignty"},{h:"זִכְרוֹנוֹת",e:"remembrance"},{h:"וְשׁוֹפָרוֹת",e:"and shofar verses"},{h:"עֶשֶׂר",e:"ten each"}],full:"Sovereignty, remembrance, and shofar verses — ten of each."},
+{parts:[{h:"שׁוֹפָר",e:"A shofar"},{h:"גְּנוּבָה",e:"that was stolen"},{h:"תָּקַע",e:"if one blew"},{h:"בּוֹ",e:"with it"},{h:"יָצָא",e:"he fulfilled"}],full:"A stolen shofar — if one blew with it, he fulfilled his obligation."},
+{parts:[{h:"הָעוֹבֵר",e:"One who passes"},{h:"אֲחוֹרֵי",e:"behind"},{h:"בֵּית הַכְּנֶסֶת",e:"the synagogue"},{h:"וְשָׁמַע",e:"and heard"},{h:"קוֹל",e:"the sound of"},{h:"שׁוֹפָר",e:"the shofar"}],full:"One who passes behind the synagogue and heard the shofar sound..."},
+{parts:[{h:"חַיָּב",e:"Obligated"},{h:"אָדָם",e:"is a person"},{h:"לִשְׁמֹעַ",e:"to hear"},{h:"קוֹל",e:"the sound of"},{h:"שׁוֹפָר",e:"the shofar"},{h:"פָּשׁוּט",e:"the straight sound"}],full:"A person is obligated to hear the straight sound of the shofar."},
+];
+
+// Word-in-sentence mapping: links vocab words to LINES where they appear
+const WORD_LINES={};
+LINES.forEach((line,li)=>{
+  line.parts.forEach(p=>{
+    const TO2=["gemara_structural","gemara_content","rashi","tosfos","rosh_hashanah"];
+    TO2.forEach(t=>{(V[t]||[]).forEach((w,wi)=>{
+      if(stripN(w.h)===stripN(p.h)||w.h===p.h){
+        const k=t+"_"+wi;
+        if(!WORD_LINES[k])WORD_LINES[k]=[];
+        if(!WORD_LINES[k].some(x=>x.li===li))WORD_LINES[k].push({li,phrase:line.parts.map(x=>x.h).join(" "),trans:line.full});
+      }
+    });});
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// PROGRESS ENGINE (smarter selection, interleaved tracks)
+// ═══════════════════════════════════════════════════
+const TO=["gemara_structural","gemara_content","rashi","tosfos","rosh_hashanah"];
+function ws(p,t,i){return p.w?.[`${t}_${i}`]||{c:0,ic:0,sk:0,lv:0,ls:0,rc:0,ft:0};}
+function upW(p,t,i,ok){const k=`${t}_${i}`,v=ws(p,t,i);return{...p,w:{...p.w,[k]:{c:v.c+(ok?1:0),ic:v.ic+(ok?0:1),sk:ok?v.sk+1:0,lv:ok?Math.min(v.lv+1,7):Math.max(v.lv-1,0),ls:Date.now(),rc:(v.rc||0)+(ok?1:0),ft:v.ft||Date.now()}}};}
+function allSeen(p){const a=[];TO.forEach(t=>{(V[t]||[]).forEach((w,i)=>{const s=ws(p,t,i);if(s.ls>0)a.push({w,i,t,s});});});return a;}
+function isDue(s){if(!s.ls)return false;const hrs=[0,1,4,12,24,72,168,336];const elapsed=(Date.now()-s.ls)/36e5;return elapsed>=(hrs[s.lv]||0);}
+function dueWords(p){const a=[];TO.forEach(t=>{(V[t]||[]).forEach((w,i)=>{const s=ws(p,t,i);if(s.ls>0&&isDue(s))a.push({w,i,t,s});});});return a.sort((a,b)=>a.s.ls-b.s.ls);}
+
+// Smarter: interleave tracks, weight toward weakest
+function nextWords(p,n){
+  const due=dueWords(p).slice(0,Math.min(3,Math.floor(n*0.4)));
+  const weak=[];TO.forEach(t=>{(V[t]||[]).forEach((w,i)=>{const s=ws(p,t,i);if(s.ls>0&&s.lv<=1&&!due.some(d=>d.t===t&&d.i===i))weak.push({w,i,t,s});});});
+  weak.sort(()=>Math.random()-0.5);const wp=[...due,...weak.slice(0,Math.min(2,n-due.length))];
+  const rem=n-wp.length;
+  // Interleave fresh words across tracks
+  const fresh=[];
+  const freshByTrack=TO.map(t=>(V[t]||[]).map((w,i)=>({w,i,t,s:ws(p,t,i)})).filter(x=>x.s.ls===0));
+  let ti=0;
+  while(fresh.length<rem){
+    let added=false;
+    for(let j=0;j<TO.length;j++){
+      const tIdx=(ti+j)%TO.length;
+      if(freshByTrack[tIdx].length>0&&fresh.length<rem){fresh.push(freshByTrack[tIdx].shift());added=true;}
+    }
+    ti++;
+    if(!added)break;
+  }
+  return[...wp,...fresh];
+}
+function nextTrack(p){for(const t of TO){if((V[t]||[]).some((_,i)=>ws(p,t,i).ls===0))return TRK[t].n;}return"All";}
+function todayWords(p){const a=[],ct=new Date();ct.setHours(0,0,0,0);const c=ct.getTime();TO.forEach(t=>{(V[t]||[]).forEach((w,i)=>{const s=ws(p,t,i);if(s.ls>=c)a.push({w,i,t,s});});});return a.sort(()=>Math.random()-0.5);}
+function penWords(p,n){const a=[];TO.forEach(t=>{(V[t]||[]).forEach((w,i)=>{const s=ws(p,t,i);if(s.lv>=3)a.push({w,i,t,s});});});return a.sort((a,b)=>b.s.lv-a.s.lv).slice(0,n);}
+function tots(p){let m=0,s=0,t=0;TO.forEach(tid=>{(V[tid]||[]).forEach((_,i)=>{t++;const sc=ws(p,tid,i);if(sc.ls>0)s++;if(sc.lv>=4)m++;});});return{m,s,t};}
+function getWeakWords(p){const w=[];TO.forEach(t=>{(V[t]||[]).forEach((word,i)=>{const s=ws(p,t,i);if(s.ls>0&&(s.lv<=2||s.ic>s.c))w.push({hebrew:word.h,transliteration:word.t,english:word.e,cat:word.c,track:TRK[t].n,correct:s.c,incorrect:s.ic,level:s.lv});});});return w.sort((a,b)=>(a.level-b.level)||(b.incorrect-a.incorrect));}
+function getWrongWords(p){const w=[];TO.forEach(t=>{(V[t]||[]).forEach((word,i)=>{const s=ws(p,t,i);if(s.ls>0&&(s.lv<=1||s.ic>=3))w.push({w:word,i,t,s});});});return w.sort((a,b)=>(a.s.lv-b.s.lv)||(b.s.ic-a.s.ic));}
+function calcPen(c){const today=todayKey(),last=c.ld;if(!last)return null;const m=daysBetween(last,today)-1;
+  // Don't count exempt days
+  let actual=0;const d=new Date(last);for(let x=0;x<m;x++){d.setDate(d.getDate()+1);const dk=d.toISOString().slice(0,10);if(!isExempt(dk))actual++;}
+  if(actual<=0)return null;const decay=actual>=7;const revPerDay=actual>=7?15:actual>=3?10:10;return{missed:actual,remaining:actual,review:revPerDay,decay};}
+function trackStats(p){return TO.map(t=>{const ws_=V[t].map((_,i)=>ws(p,t,i));return{id:t,...TRK[t],seen:ws_.filter(s=>s.ls>0).length,total:V[t].length,mastered:ws_.filter(s=>s.lv>=4).length,totalRc:ws_.reduce((a,s)=>a+(s.rc||0),0)};});}
+function catStats(p){const cats={};TO.forEach(t=>{V[t].forEach((w,i)=>{const s=ws(p,t,i);if(!cats[w.c])cats[w.c]={n:w.c,total:0,seen:0,mastered:0,wrong:0};cats[w.c].total++;if(s.ls>0)cats[w.c].seen++;if(s.lv>=4)cats[w.c].mastered++;cats[w.c].wrong+=s.ic;});});return Object.values(cats).sort((a,b)=>b.total-a.total);}
+function getBlanksForWords(p){return BLANKS.filter(b=>{const pp=b.ak.split("_"),idx=parseInt(pp.pop()),tr=pp.join("_");return ws(p,tr,idx)?.ls>0;}).sort(()=>Math.random()-0.5);}
+function blankWord(ak){const p=ak.split("_"),idx=parseInt(p.pop()),tr=p.join("_");return{w:V[tr]?.[idx],t:tr,i:idx};}
+
+// ═══════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════
+const BG="linear-gradient(170deg,#1E1610 0%,#2C1E12 30%,#3D2B1F 100%)";
+const LBG="linear-gradient(170deg,#FFF8EF 0%,#FAF3E8 50%,#F0E4D0 100%)";
+const BTN={padding:"16px 24px",borderRadius:"14px",border:"none",fontSize:"17px",fontFamily:"'EB Garamond',serif",color:"white",fontWeight:500,minHeight:"52px",width:"100%"};
+const CARD={width:"100%",maxWidth:"360px",margin:"0 auto",background:"linear-gradient(145deg,#FFFFFF,#FAF3E8)",borderRadius:"16px",border:"2px solid #D4B896",padding:"28px 20px",textAlign:"center"};
+const SB="max(env(safe-area-inset-bottom, 0px), 16px)";
+const ABOX={background:"linear-gradient(135deg,#2C1E12,#3D2B1F)",borderRadius:"12px",padding:"14px 16px",textAlign:"left",animation:"slideUp 0.3s ease"};
+const ALAB={fontSize:"9px",color:"#C4956A",letterSpacing:"1.5px",marginBottom:"6px"};
+const ABTN={padding:"8px 16px",borderRadius:"8px",border:"1px solid rgba(196,149,106,0.25)",background:"rgba(44,30,18,0.04)",color:"#A0764E",fontSize:"13px",minHeight:"40px"};
+
+// ═══════════════════════════════════════════════════
+// SESSION TIMER COMPONENT
+// ═══════════════════════════════════════════════════
+function SessionTimer({startTime}){
+  const[el,setEl]=useState(0);
+  useEffect(()=>{const iv=setInterval(()=>setEl(Math.round((Date.now()-startTime)/1000)),1000);return()=>clearInterval(iv);},[startTime]);
+  const m=Math.floor(el/60),s=el%60;
+  return <span style={{fontSize:"11px",color:"#8B7355",fontVariantNumeric:"tabular-nums"}}>{m}:{s<10?"0"+s:s}</span>;
+}
+
+// ═══════════════════════════════════════════════════
+// CALENDAR STRIP (last 14 days, shows green/gray/red)
+// ═══════════════════════════════════════════════════
+function CalStrip({cal}){
+  const days=[];const today=todayKey();
+  for(let i=13;i>=0;i--){const d=new Date(estNow());d.setDate(d.getDate()-i);const k=d.toISOString().slice(0,10);
+    const done=cal.days[k]?.ok;const exempt=isExempt(k);const isToday=k===today;
+    days.push({k,done,exempt,isToday,day:d.getDate(),dow:["S","M","T","W","T","F","S"][d.getDay()]});}
+  return(<div style={{display:"flex",gap:"3px",justifyContent:"center",marginBottom:"16px"}}>
+    {days.map(d=><div key={d.k} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"2px"}}>
+      <div style={{fontSize:"8px",color:"#8B735544"}}>{d.dow}</div>
+      <div style={{width:"18px",height:"18px",borderRadius:"4px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",fontWeight:600,
+        background:d.isToday?(d.done?"#6B8E7B":"rgba(196,149,106,0.3)"):d.done?"rgba(107,142,123,0.5)":d.exempt?"rgba(139,115,85,0.15)":"rgba(212,114,106,0.25)",
+        color:d.isToday?"#FAF3E8":d.done?"#FAF3E8cc":d.exempt?"#8B735544":"#D4726A66",
+        border:d.isToday?"1.5px solid #C4956A":"1px solid transparent"
+      }}>{d.day}</div>
+    </div>)}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// DAILY BRIEFING
+// ═══════════════════════════════════════════════════
+function DailyBrief({progress,cal}){
+  const[text,setText]=useState(LS.get("gv6_brief_"+todayKey())||"");
+  const[loading,setLoading]=useState(false);
+  useEffect(()=>{if(!text&&!loading){setLoading(true);const weak=getWeakWords(progress),t=tots(progress),due=dueWords(progress).length;
+    askAI(`Student stats: ${t.s}/${t.t} seen, ${t.m} mastered, ${cal.sk}-day streak, ${due} words due for review, ${weak.length} weak. Their weakest words are: ${weak.slice(0,5).map(w=>`${w.hebrew} (${w.transliteration}) = "${w.english}"`).join(", ")}. Give a 1-2 sentence personalized daily greeting and learning tip. ALWAYS include Hebrew with nekudot when mentioning any word, like תָּנָא (tana). Be warm, specific, actionable. Like a rebbi starting a morning seder.`,
+    "You are a Gemara rebbi giving a personalized daily briefing. Max 2 sentences. Warm, specific. ALWAYS include Hebrew with nekudot next to transliterations.",200)
+    .then(t=>{setText(t);LS.set("gv6_brief_"+todayKey(),t);setLoading(false);});}},[]);
+  if(!text&&!loading)return null;
+  return(<div style={{width:"100%",maxWidth:"340px",marginBottom:"16px",padding:"14px 16px",borderRadius:"12px",border:"1px solid rgba(196,149,106,0.12)",background:"rgba(196,149,106,0.04)"}}>
+    {loading?<div style={{color:"#C4956A66",fontSize:"13px",animation:"pulse 1.5s infinite",textAlign:"center"}}>Your rebbi is thinking...</div>
+    :<div style={{color:"#C4956Acc",fontSize:"14px",lineHeight:1.7,textAlign:"center",fontStyle:"italic"}}>{text}</div>}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// DAILY BRIEF INLINE (compact version for teach screen)
+// ═══════════════════════════════════════════════════
+function DailyBriefInline({progress}){
+  const text=LS.get("gv6_brief_"+todayKey());
+  if(!text)return null;
+  return(<div style={{margin:"0 20px 8px",padding:"10px 14px",borderRadius:"10px",border:"1px solid #D4B89622",background:"rgba(196,149,106,0.04)"}}>
+    <div style={{color:"#8B7355",fontSize:"13px",lineHeight:1.6,textAlign:"center",fontStyle:"italic"}}>{text}</div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════
+const IP={w:{}},IC={ld:null,sk:0,bsk:0,days:{},pc:true,md:null};
+
+function App(){
+  const[sc,setSc]=useState("load");
+  const[pr,setPr]=useState(IP);
+  const[cal,setCal]=useState(IC);
+  const[pen,setPen]=useState(null);
+  const[ss,setSs]=useState(null);
+  const[sr,setSr]=useState({nw:0,lv:0});
+  const[lw,setLw]=useState(null);
+  const[sl,setSl]=useState("");
+  const[synced,setSynced]=useState(false);
+  const pk="9222";
+  const syncTimer=useRef(null);
+
+  // Sync only on session end or app background
+  const syncToDb=useCallback(async(np,nc)=>{if(!sb)return;try{await sb.from('progress').upsert({pass_key:pk,data:np,calendar:nc,updated_at:new Date().toISOString()},{onConflict:'pass_key'});setSynced(true);}catch(e){}},[]);
+  const loadFromDb=useCallback(async()=>{if(!sb)return null;try{const{data}=await sb.from('progress').select('*').eq('pass_key',pk).single();return data;}catch{return null;}},[]);
+
+  // Save to localStorage always, sync to DB on session end
+  const save=(np,nc)=>{LS.set("gv6_p",np);LS.set("gv6_c",nc);};
+
+  useEffect(()=>{const init=async()=>{let p=LS.get("gv6_p")||IP,c=LS.get("gv6_c")||IC;if(sb){const d=await loadFromDb();if(d){const dt=new Date(d.updated_at).getTime(),lt=c.ld?new Date(c.ld).getTime():0;if(dt>lt){p=d.data||p;c=d.calendar||c;}}}const pe=calcPen(c);if(pe?.decay){const nw={...p.w};Object.keys(nw).forEach(k=>{if(nw[k].lv>4)nw[k]={...nw[k],lv:nw[k].lv-1};});p={...p,w:nw};}if(pe&&c.ld&&c.ld!==todayKey()){setPen(pe);c={...c,pc:false};}if(c.ld===todayKey()){setPen(null);c={...c,pc:true};}if(c.md&&c.md!==todayKey())c={...c,md:null};setPr(p);setCal(c);save(p,c);setSc("home");
+    // Generate fresh brief every time app opens
+    const seenN2=allSeen(p).length;
+    if(seenN2>=5&&!isExempt(todayKey())){
+      const weak=getWeakWords(p),t2=tots(p),due=dueWords(p).length;
+      const hr=estHour();const timeGreet=hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
+      askAI(`${timeGreet}! Student stats: ${t2.s}/${t2.t} seen, ${t2.m} mastered, ${c.sk}-day streak, ${due} words due for review, ${weak.length} weak. Their weakest words are: ${weak.slice(0,5).map(w=>`${w.hebrew} (${w.transliteration}) = "${w.english}"`).join(", ")}. Give a 1-2 sentence personalized greeting and learning tip. Start with "${timeGreet}!" ALWAYS include Hebrew with nekudot when mentioning any word, like תָּנָא (tana). Be warm, specific, actionable. Like a rebbi starting a seder.`,
+      "You are a Gemara rebbi giving a personalized briefing. Max 2 sentences. Warm, specific. ALWAYS include Hebrew with nekudot next to transliterations.",200)
+      .then(t3=>{LS.set("gv6_brief_"+todayKey(),t3);});
+    }
+  };init();
+    // Sync on background
+    const onVis=()=>{if(document.hidden){syncToDb(LS.get("gv6_p")||IP,LS.get("gv6_c")||IC);}};
+    document.addEventListener("visibilitychange",onVis);
+    // Keyboard viewport fix
+    const onVVResize=()=>{if(window.visualViewport){const h=window.visualViewport.height;document.documentElement.style.setProperty('--app-h',h+'px');document.documentElement.style.setProperty('--kb-offset',(window.innerHeight-h)+'px');}};
+    if(window.visualViewport){window.visualViewport.addEventListener('resize',onVVResize);window.visualViewport.addEventListener('scroll',onVVResize);onVVResize();}
+    // Register Service Worker + Push Notifications
+    const VAPID_PUBLIC="BHDD4StYlN8Vh3WsUHBZXdqaovQESfpMOSVsK1bAmwEdGkKBjYk5PA1Xd0thraIeYtUnN5tk-udL2lDPwHYwdn0";
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js').then(async(reg)=>{
+        console.log('SW registered');
+        // Request notification permission
+        if("Notification" in window&&Notification.permission==="default"){
+          const perm=await Notification.requestPermission();
+          if(perm!=="granted")return;
+        }
+        if(Notification.permission!=="granted")return;
+        // Subscribe to push
+        try{
+          let sub=await reg.pushManager.getSubscription();
+          if(!sub){
+            const key=Uint8Array.from(atob(VAPID_PUBLIC.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+            sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+          }
+          // Save subscription to Supabase
+          if(sb&&sub){
+            const subJson=JSON.stringify(sub.toJSON());
+            const pk=LS.get("gv6_pin")||"9222";
+            // Upsert: check if exists, then insert or update
+            const existing=await sb.from('push_subs').select('id').eq('pass_key',pk).maybeSingle();
+            if(existing?.data){
+              await sb.from('push_subs').update({subscription:subJson,updated_at:new Date().toISOString()}).eq('pass_key',pk);
+            }else{
+              await sb.from('push_subs').insert({pass_key:pk,subscription:subJson});
+            }
+            console.log('Push subscription saved');
+          }
+        }catch(e){console.warn('Push sub failed:',e);}
+      }).catch(e=>console.warn('SW registration failed:',e));
+    }
+    return()=>{document.removeEventListener("visibilitychange",onVis);if(window.visualViewport){window.visualViewport.removeEventListener('resize',onVVResize);window.visualViewport.removeEventListener('scroll',onVVResize);}};
+  },[]);
+
+  const doAns=(t,i,ok)=>{const prev=ws(pr,t,i),np=upW(pr,t,i,ok),ns=ws(np,t,i);setPr(np);save(np,cal);setSr(r=>({nw:r.nw+(prev.ls===0?1:0),lv:r.lv+(ns.lv>prev.lv?1:0)}));return np;};
+  const rec=(p2,c2)=>{const pp=p2||pr,cc=c2||cal;const today=todayKey(),el=Math.round((Date.now()-(ss||Date.now()))/1000);const prev=cc.days[today]||{ok:false,tm:0,nw:0,lv:0,ns:0};const isNew=!prev.ok;let sk=cc.sk;if(isNew){const y=new Date(estNow());y.setDate(y.getDate()-1);const yk=y.toISOString().slice(0,10);sk=(cc.ld===yk||cc.sk===0)?cc.sk+1:1;}const nc={...cc,ld:today,sk,bsk:Math.max(cc.bsk,sk),pc:true,days:{...cc.days,[today]:{ok:true,tm:prev.tm+el,nw:prev.nw+sr.nw,lv:prev.lv+sr.lv,ns:(prev.ns||0)+1}}};setCal(nc);setPen(null);save(pp,nc);syncToDb(pp,nc);return nc;};
+
+  const go=(hasPen)=>{setSs(Date.now());setSr({nw:0,lv:0});if(hasPen){setLw(penWords(pr,pen?.review||10));setSl("pen");setSc("test");}else{
+    // Morning review = DUE WORDS ONLY (not all seen)
+    const dw=dueWords(pr);
+    if(dw.length>0&&cal.md!==todayKey()){setLw(dw.slice(0,Math.min(20,dw.length)));setSl("am");setSc("test");}
+    else setSc("teach");
+  }};
+
+  // Shabbos/YT check
+  const todayExempt=isExempt(todayKey());
+
+  if(sc==="load")return<div style={{minHeight:"100vh",background:"#2C1E12",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:"36px",fontFamily:"'Frank Ruhl Libre',serif",color:"#C4956A"}}>דַּף הַיּוֹמִי</div><div style={{fontSize:"14px",color:"#8B7355",marginTop:"8px",animation:"pulse 1.5s infinite"}}>Loading...</div></div></div>;
+
+  // ─── HOME (cleaned up: status + button + nav) ───
+  if(sc==="home"){
+    const tot=tots(pr),today=todayKey(),td=cal.days[today];const hasPen=pen&&pen.remaining>0&&!cal.pc;
+    const done=td&&td.tm>=300&&(td.nw>=2||td.lv>=3);
+    const morningDone=cal.md===today;const pct=tot.t>0?Math.round((tot.s/tot.t)*100):0;
+    const dueN=dueWords(pr).length;const totalRc=Object.values(pr.w||{}).reduce((a,v)=>a+(v.rc||0),0);
+    const wrongN=getWrongWords(pr).length;
+
+    return(<div style={{minHeight:"100vh",background:BG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column",alignItems:"center",padding:`24px 20px calc(24px + ${SB})`,color:"#FAF3E8"}}>
+      {/* Sync indicator */}
+      {sbOn&&<div style={{position:"fixed",top:"8px",right:"12px",fontSize:"9px",color:"#8B735544",zIndex:50}}>synced</div>}
+
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",maxWidth:"360px"}}>
+        {/* Calendar strip */}
+        <CalStrip cal={cal}/>
+
+        {/* Shabbos/YT message */}
+        {todayExempt&&<div style={{textAlign:"center",marginBottom:"20px",padding:"16px",borderRadius:"12px",border:"1px solid rgba(196,149,106,0.12)",background:"rgba(196,149,106,0.04)"}}>
+          <div style={{fontSize:"24px",marginBottom:"6px"}}>🕯️</div>
+          <div style={{fontSize:"18px",color:"#C4956A",fontWeight:600}}>{new Date(today+"T12:00:00").getDay()===6?"Good Shabbos":"Good Yom Tov"}</div>
+          <div style={{fontSize:"13px",color:"#8B7355",marginTop:"4px"}}>No learning required today</div>
+        </div>}
+
+        {/* Status */}
+        <div style={{fontSize:"48px",marginBottom:"6px",lineHeight:1}}>{done?"✓":hasPen?"⚠️":todayExempt?"🕯️":td?"⏳":"📖"}</div>
+        <div style={{fontSize:"22px",fontWeight:600,textAlign:"center",marginBottom:"4px",color:done?"#6B8E7B":hasPen?"#D4726A":"#FAF3E8"}}>{done?"Done for today":hasPen?`${pen.remaining} day${pen.remaining>1?"s":""} to clear (${pen.missed} missed)`:todayExempt?"Rest day":td?"Keep going":"Time to learn"}</div>
+        <div style={{fontSize:"13px",color:"#8B7355",textAlign:"center",lineHeight:1.6,marginBottom:"8px"}}>
+          {done&&td&&<>{td.nw} new · {td.lv} leveled · {Math.floor(td.tm/60)}m</>}
+          {hasPen&&<>Day {pen.missed-pen.remaining+1} of {pen.missed}: review {pen.review} words{pen.decay?" · words decayed":""}</>}
+          {!done&&!hasPen&&!todayExempt&&td&&<>{Math.floor(td.tm/60)}m so far · {td.nw} new</>}
+          {!done&&!hasPen&&!todayExempt&&!td&&(dueN>0&&!morningDone?<>Morning review: {dueN} due</>:<>5 min minimum</>)}
+        </div>
+
+        {/* Compact stats line */}
+        <div style={{fontSize:"11px",color:"#8B735566",marginBottom:"16px"}}>
+          {cal.sk>0&&<span>{cal.sk>=7?"🔥":cal.sk>=3?"⚡":"📅"}{cal.sk} streak  </span>}
+          <span>{tot.s}/{tot.t} words · {tot.m} mastered</span>
+          {dueN>0&&<span style={{color:"#C4956A88"}}>  · ⏰{dueN} due</span>}
+        </div>
+
+        {/* Progress bar */}
+        <div style={{width:"100%",maxWidth:"280px",marginBottom:"20px"}}><div style={{height:"4px",background:"rgba(255,255,255,0.08)",borderRadius:"3px",overflow:"hidden"}}><div style={{height:"100%",borderRadius:"3px",background:"linear-gradient(90deg,#6B8E7B,#C4956A)",width:`${pct}%`,transition:"width 0.5s"}}/></div></div>
+
+        {/* Main button */}
+        {!todayExempt&&<button onClick={()=>go(hasPen)} style={{...BTN,background:hasPen?"linear-gradient(135deg,#D4726A,#B85450)":done?"linear-gradient(135deg,#6B8E7B,#5A7D6A)":"linear-gradient(135deg,#C4956A,#A0764E)",maxWidth:"320px",boxShadow:"0 4px 20px rgba(164,118,78,0.3)",animation:!done&&!td?"glow 2s infinite":"none"}}>{hasPen?`Clear Day ${pen.missed-pen.remaining+1}`:dueN>0&&!morningDone?"Morning Review":done?"Bonus Round":"Start Learning"}</button>}
+
+        {/* Nav row */}
+        <div style={{display:"flex",gap:"6px",marginTop:"16px",width:"100%",maxWidth:"320px"}}>
+          <button onClick={()=>setSc("wordbank")} style={{flex:1,padding:"10px",borderRadius:"10px",border:"1px solid rgba(196,149,106,0.12)",background:"transparent",color:"#8B735566",fontSize:"12px",minHeight:"44px"}}>📋 Words</button>
+          <button onClick={()=>setSc("progress")} style={{flex:1,padding:"10px",borderRadius:"10px",border:"1px solid rgba(196,149,106,0.12)",background:"transparent",color:"#8B735566",fontSize:"12px",minHeight:"44px"}}>📊 Progress</button>
+          {wrongN>=3&&<button onClick={()=>{setSs(Date.now());setSr({nw:0,lv:0});setLw(getWrongWords(pr).slice(0,15));setSl("drill");setSc("test");}} style={{flex:1,padding:"10px",borderRadius:"10px",border:"1px solid rgba(212,114,106,0.15)",background:"transparent",color:"#D4726A66",fontSize:"12px",minHeight:"44px"}}>🔨 Drill</button>}
+          {getWeakWords(pr).length>=3&&<button onClick={()=>setSc("coach")} style={{flex:1,padding:"10px",borderRadius:"10px",border:"1px solid rgba(196,149,106,0.12)",background:"transparent",color:"#8B735566",fontSize:"12px",minHeight:"44px"}}>🎯 Coach</button>}
+        </div>
+
+        {/* Laining unlock */}
+        {tot.m>=50&&<button onClick={()=>setSc("laining")} style={{marginTop:"10px",padding:"12px",borderRadius:"10px",border:"1px solid rgba(107,142,123,0.15)",background:"transparent",maxWidth:"320px",width:"100%",fontSize:"13px",color:"#6B8E7B66",minHeight:"44px"}}>📜 Make a Laining</button>}
+      </div>
+      <button onClick={()=>{if(confirm("Reset ALL progress?")){setPr(IP);setCal(IC);setPen(null);save(IP,IC);syncToDb(IP,IC);}}} style={{marginTop:"16px",background:"none",border:"none",color:"#8B735520",fontSize:"10px",minHeight:"30px"}}>Reset</button>
+    </div>);
+  }
+
+  // ─── WORD BANK ───
+  if(sc==="wordbank")return<WordBank pr={pr} onBack={()=>setSc("home")}/>;
+  // ─── PROGRESS ───
+  if(sc==="progress")return<ProgressView pr={pr} cal={cal} onBack={()=>setSc("home")}/>;
+  // ─── AI COACH ───
+  if(sc==="coach")return<CoachView pr={pr} cal={cal} onBack={()=>setSc("home")}/>;
+  // ─── LAINING ───
+  if(sc==="laining")return<Laining pr={pr} onBack={()=>setSc("home")}/>;
+
+  // ─── TEACH (with build-faster: 5 then option for 8-10) ───
+  if(sc==="teach"){
+    const nw=nextWords(pr,5),tn=nextTrack(pr);
+    if(nw.length===0)return<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 20px"}}><div style={{fontSize:"48px",marginBottom:"12px"}}>🎉</div><div style={{fontSize:"22px",color:"#3D2B1F",fontWeight:600}}>All {tots(pr).t} words learned!</div><button onClick={()=>setSc("home")} style={{...BTN,marginTop:"24px",background:"linear-gradient(135deg,#C4956A,#A0764E)",maxWidth:"280px"}}>Home</button></div>;
+    return<Teach key={Date.now()} words={nw} trackName={tn} progress={pr} onDone={()=>{setLw([...nw]);setSl("pt");setSc("test");}} onExit={()=>{if(sr.nw>0||sr.lv>0)rec();setSc("home");}} ss={ss}/>;
+  }
+
+  // ─── TEACH MORE (8-10 after first 5) ───
+  if(sc==="teachmore"){
+    const nw=nextWords(pr,8),tn=nextTrack(pr);
+    if(nw.length===0){rec();setSc("done");return null;}
+    return<Teach key={Date.now()} words={nw} trackName={tn} progress={pr} onDone={()=>{setLw([...nw]);setSl("pt2");setSc("test");}} onExit={()=>{if(sr.nw>0||sr.lv>0)rec();setSc("home");}} ss={ss}/>;
+  }
+
+  // ─── TEST ───
+  if(sc==="test"){
+    if(!lw||lw.length===0){
+      if(sl==="am"){setCal(c=>({...c,md:todayKey()}));save(pr,{...cal,md:todayKey()});setSs(Date.now());setSr({nw:0,lv:0});setSc("teach");}
+      else if(sl==="pen"){const np={...pen,remaining:pen.remaining-1};if(np.remaining>0){setPen(np);setLw(penWords(pr,np.review));setSr({nw:0,lv:0});}else{const nc={...cal,pc:true};setCal(nc);save(pr,nc);setPen(null);setSs(Date.now());setSr({nw:0,lv:0});setSc("teach");}}
+      else if(sl==="drill"){rec();setSc("done");}
+      else setSc("fillblank");
+      return null;
+    }
+    const labels={am:{t:"🌅 Morning Review",s:`${lw.length} due`},pen:{t:`⚠️ Penalty Day ${pen?(pen.missed-pen.remaining+1):1}/${pen?.missed||1}`,s:`${lw.length} to clear`},pt:{t:"✍️ Test",s:`${lw.length} words`},pt2:{t:"✍️ Test",s:`${lw.length} words`},pm:{t:"🌙 Review",s:`${lw.length} today`},drill:{t:"🔨 Wrong Drill",s:`${lw.length} words`}};const lb=labels[sl]||labels.pt;
+    const onDone=()=>{
+      if(sl==="am"){const nc={...cal,md:todayKey()};setCal(nc);save(pr,nc);setSs(Date.now());setSr({nw:0,lv:0});setSc("teach");}
+      else if(sl==="pen"){const np={...pen,remaining:pen.remaining-1};if(np.remaining>0){setPen(np);setLw(penWords(pr,np.review));setSr({nw:0,lv:0});}else{const nc={...cal,pc:true};setCal(nc);save(pr,nc);setPen(null);setSs(Date.now());setSr({nw:0,lv:0});setSc("teach");}}
+      else if(sl==="drill"){rec();setSc("done");}
+      else if(sl==="pt"||sl==="pt2"){setSc("fillblank");}
+      else{rec();setSc("done");}
+    };
+    return(<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px",alignItems:"center"}}><button onClick={()=>{if(sl==="am"){/* No skip — morning review is mandatory */}else{if(sr.nw>0||sr.lv>0)rec();setSc("home");}}} style={{background:"none",color:sl==="am"?"#8B735544":"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px",pointerEvents:sl==="am"?"none":"auto"}}>{sl==="am"?"🌅 Required":"✕"}</button><div style={{display:"flex",alignItems:"center",gap:"8px"}}>{ss&&<SessionTimer startTime={ss}/>}<span style={{fontSize:"12px",color:"#8B7355"}}>{lb.t}</span></div></div>
+      <Test key={sl+ss} words={lw} progress={pr} onAns={doAns} onDone={onDone} showNek={l=>sl==="pt"||sl==="pt2"||l<4}/>
+    </div>);
+  }
+
+  // ─── FILL-IN-THE-BLANK ───
+  if(sc==="fillblank"){
+    const avail=getBlanksForWords(pr).slice(0,4);
+    if(avail.length===0){setSc("boss");return null;}
+    return<FillBlank blanks={avail} progress={pr} onAns={doAns} onDone={()=>setSc("boss")} onSkip={()=>setSc("boss")} ss={ss}/>;
+  }
+
+  // ─── BOSS ───
+  if(sc==="boss"){return(<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}><div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px"}}><button onClick={()=>{rec();setSc("done");}} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>Skip</button><div style={{display:"flex",alignItems:"center",gap:"8px"}}>{ss&&<SessionTimer startTime={ss}/>}<span style={{fontSize:"12px",color:"#8B7355"}}>📜 Boss Round</span></div></div><div style={{textAlign:"center",padding:"0 20px 16px"}}><div style={{fontSize:"20px",color:"#3D2B1F",fontWeight:600}}>Real Gemara</div><div style={{fontSize:"13px",color:"#8B7355"}}>Tap each word</div></div><Boss onDone={()=>setSc("wordreview")}/></div>);}
+
+  // ─── WORD REVIEW (in-session) ───
+  if(sc==="wordreview"){return<WordReview pr={pr} onDone={()=>{rec();setSc("done");}}/>;}
+
+
+  // ─── DONE (with build-faster option) ───
+  if(sc==="done"){
+    const tot=tots(pr),today=todayKey(),td=cal.days[today];
+    const hasMore=TO.some(t=>(V[t]||[]).some((_,i)=>ws(pr,t,i).ls===0));
+    return(<div style={{minHeight:"100vh",background:BG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:`40px 20px calc(40px + ${SB})`,color:"#FAF3E8"}}>
+      <div style={{fontSize:"56px",marginBottom:"12px"}}>✓</div>
+      <div style={{fontSize:"24px",fontWeight:600,marginBottom:"6px",color:"#6B8E7B"}}>Session Complete</div>
+      <div style={{fontSize:"14px",color:"#8B7355",marginBottom:"20px"}}>{sr.nw} new · {sr.lv} leveled{td?` · ${Math.floor(td.tm/60)}m total`:""}</div>
+      <div style={{display:"flex",gap:"12px",marginBottom:"20px",fontSize:"13px",color:"#8B7355"}}>
+        <span>{tot.s}/{tot.t} seen</span><span>{tot.m} mastered</span>{cal.sk>0&&<span>{cal.sk>=7?"🔥":cal.sk>=3?"⚡":"📅"} {cal.sk}</span>}
+      </div>
+      <SessionDebrief sr={sr} progress={pr}/>
+      {/* Build faster */}
+      {hasMore&&<button onClick={()=>{setSs(Date.now());setSr({nw:0,lv:0});setSc("teachmore");}} style={{...BTN,marginTop:"16px",background:"linear-gradient(135deg,#C4956A,#A0764E)",maxWidth:"300px"}}>⚡ Learn 8 More</button>}
+      <button onClick={()=>setSc("home")} style={{...BTN,marginTop:"10px",background:"transparent",border:"1px solid rgba(196,149,106,0.2)",maxWidth:"300px",color:"#C4956A"}}>Home</button>
+    </div>);
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════
+// WORD BANK (Quick review + words in sentences)
+// ═══════════════════════════════════════════════════
+function WordBank({pr,onBack}){
+  const[filter,setFilter]=useState("all");
+  const[revealed,setRevealed]=useState({});
+  const seen=[];TO.forEach(t=>{(V[t]||[]).forEach((w,i)=>{const s=ws(pr,t,i);if(s.ls>0)seen.push({w,t,i,s,k:t+"_"+i});});});
+  const filtered=filter==="all"?seen:seen.filter(x=>x.t===filter);
+  const toggle=k=>setRevealed(r=>({...r,[k]:!r[k]}));
+  return(<div style={{minHeight:"100vh",background:BG,fontFamily:"'EB Garamond',serif",padding:`20px 20px calc(20px + ${SB})`,color:"#FAF3E8"}}>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:"12px"}}><button onClick={onBack} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>← Back</button><div style={{fontSize:"14px",color:"#8B7355",lineHeight:"44px"}}>📋 Word Bank ({seen.length})</div></div>
+    {/* Filter */}
+    <div style={{display:"flex",gap:"4px",marginBottom:"16px",flexWrap:"wrap"}}><button onClick={()=>setFilter("all")} style={{padding:"6px 10px",borderRadius:"6px",fontSize:"11px",minHeight:"32px",background:filter==="all"?"rgba(196,149,106,0.2)":"transparent",color:filter==="all"?"#C4956A":"#8B735566",border:"1px solid rgba(196,149,106,0.15)"}}>All</button>
+      {TO.map(t=><button key={t} onClick={()=>setFilter(t)} style={{padding:"6px 10px",borderRadius:"6px",fontSize:"11px",minHeight:"32px",background:filter===t?"rgba(196,149,106,0.2)":"transparent",color:filter===t?"#C4956A":"#8B735566",border:"1px solid rgba(196,149,106,0.15)"}}>{TRK[t].i} {TRK[t].n.split(":")[0]}</button>)}</div>
+    {/* Word list */}
+    <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+      {filtered.map(({w,t,i,s,k})=>{const isOpen=revealed[k];const lines=WORD_LINES[k]||[];
+        return(<div key={k} onClick={()=>toggle(k)} style={{padding:"12px 14px",borderRadius:"10px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.05)",cursor:"pointer"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}><span style={{fontSize:"22px",fontFamily:"'Frank Ruhl Libre',serif",color:"#FAF3E8"}}>{w.h}</span><span style={{fontSize:"12px",color:"#8B7355",fontStyle:"italic"}}>{w.t}</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"9px",color:"#8B735544"}}>lv{s.lv}</span><span style={{fontSize:"12px",color:"#8B735566"}}>{isOpen?"▲":"▼"}</span></div>
+          </div>
+          {isOpen&&<div style={{marginTop:"10px",animation:"fadeUp 0.2s ease"}}>
+            <div style={{fontSize:"16px",color:"#C4956A",marginBottom:"6px"}}>{w.e}</div>
+            <div style={{fontSize:"12px",color:"#8B735588"}}>No nekudot: <span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"16px"}}>{stripN(w.h)}</span></div>
+            {lines.length>0&&<div style={{marginTop:"8px",padding:"8px 10px",borderRadius:"6px",background:"rgba(196,149,106,0.06)",border:"1px solid rgba(196,149,106,0.1)"}}>
+              <div style={{fontSize:"9px",color:"#C4956A",letterSpacing:"1.5px",marginBottom:"4px"}}>IN CONTEXT</div>
+              {lines.slice(0,2).map((l,li)=><div key={li} style={{fontSize:"14px",fontFamily:"'Frank Ruhl Libre',serif",color:"#FAF3E8cc",direction:"rtl",marginBottom:"4px",lineHeight:1.5}}>{l.phrase}<div style={{fontSize:"11px",color:"#8B7355",direction:"ltr",fontFamily:"'EB Garamond',serif",fontStyle:"italic"}}>{l.trans}</div></div>)}
+            </div>}
+            <div style={{fontSize:"10px",color:"#8B735544",marginTop:"4px"}}>{s.c} correct · {s.ic} wrong · {s.rc||0} chazaros</div>
+          </div>}
+        </div>);
+      })}
+    </div>
+    {filtered.length===0&&<div style={{textAlign:"center",color:"#8B735544",fontSize:"14px",marginTop:"40px"}}>No words learned yet</div>}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// PROGRESS VIEW (with calendar grid)
+// ═══════════════════════════════════════════════════
+function ProgressView({pr,cal,onBack}){
+  const ts=trackStats(pr),cs=catStats(pr),tot=tots(pr);const totalRc=Object.values(pr.w||{}).reduce((a,v)=>a+(v.rc||0),0);
+  // Calendar grid: last 60 days
+  const calDays=[];for(let i=59;i>=0;i--){const d=new Date(estNow());d.setDate(d.getDate()-i);calDays.push(d.toISOString().slice(0,10));}
+  return(<div style={{minHeight:"100vh",background:BG,fontFamily:"'EB Garamond',serif",padding:`20px 20px calc(20px + ${SB})`,color:"#FAF3E8"}}>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:"20px"}}><button onClick={onBack} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>← Back</button><div style={{fontSize:"14px",color:"#8B7355",lineHeight:"44px"}}>📊 Progress</div></div>
+    <div style={{textAlign:"center",marginBottom:"20px"}}>
+      <div style={{fontSize:"48px",fontWeight:700,color:"#C4956A"}}>{tot.m}</div>
+      <div style={{fontSize:"13px",color:"#8B7355"}}>words mastered of {tot.t}</div>
+      <div style={{fontSize:"13px",color:"#8B735566",marginTop:"4px"}}>{totalRc} total chazaros · {cal.bsk||0} best streak</div>
+    </div>
+    {/* Calendar grid */}
+    <div style={{fontSize:"11px",color:"#C4956A",letterSpacing:"1.5px",marginBottom:"8px"}}>60-DAY CALENDAR</div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:"3px",marginBottom:"20px"}}>
+      {calDays.map(dk=>{const done=cal.days[dk]?.ok;const exempt=isExempt(dk);
+        return <div key={dk} title={dk} style={{width:"14px",height:"14px",borderRadius:"3px",background:done?"rgba(107,142,123,0.6)":exempt?"rgba(139,115,85,0.1)":"rgba(212,114,106,0.15)"}}/>;
+      })}
+    </div>
+    <div style={{display:"flex",gap:"12px",marginBottom:"20px",fontSize:"10px",color:"#8B7355"}}>
+      <span><span style={{display:"inline-block",width:"10px",height:"10px",borderRadius:"2px",background:"rgba(107,142,123,0.6)",marginRight:"4px",verticalAlign:"middle"}}/> Practiced</span>
+      <span><span style={{display:"inline-block",width:"10px",height:"10px",borderRadius:"2px",background:"rgba(139,115,85,0.1)",marginRight:"4px",verticalAlign:"middle"}}/> Shabbos/YT</span>
+      <span><span style={{display:"inline-block",width:"10px",height:"10px",borderRadius:"2px",background:"rgba(212,114,106,0.15)",marginRight:"4px",verticalAlign:"middle"}}/> Missed</span>
+    </div>
+    {/* Tracks */}
+    <div style={{fontSize:"11px",color:"#C4956A",letterSpacing:"1.5px",marginBottom:"10px"}}>BY TRACK</div>
+    {ts.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"10px",padding:"10px 12px",borderRadius:"10px",background:"rgba(255,255,255,0.03)"}}>
+      <span style={{fontSize:"20px"}}>{t.i}</span>
+      <div style={{flex:1}}><div style={{fontSize:"14px",color:"#FAF3E8cc"}}>{t.n}</div><div style={{height:"4px",background:"rgba(255,255,255,0.06)",borderRadius:"2px",marginTop:"4px"}}><div style={{height:"100%",borderRadius:"2px",background:t.c,width:`${t.total>0?(t.mastered/t.total)*100:0}%`}}/></div></div>
+      <div style={{fontSize:"12px",color:"#8B7355",textAlign:"right"}}>{t.mastered}/{t.total}<br/><span style={{fontSize:"10px"}}>{t.totalRc} chazaros</span></div>
+    </div>)}
+    <div style={{fontSize:"11px",color:"#C4956A",letterSpacing:"1.5px",marginTop:"20px",marginBottom:"10px"}}>BY CATEGORY</div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>{cs.map(c=><div key={c.n} style={{padding:"6px 12px",borderRadius:"8px",background:c.mastered===c.total&&c.total>0?"rgba(107,142,123,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${c.mastered===c.total&&c.total>0?"rgba(107,142,123,0.3)":"rgba(255,255,255,0.06)"}`,fontSize:"12px",color:"#FAF3E8aa"}}>{c.n}: {c.mastered}/{c.total}</div>)}</div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// AI COACH
+// ═══════════════════════════════════════════════════
+function CoachView({pr,cal,onBack}){
+  const[text,setText]=useState(""),[ld,setLd]=useState(false);
+  const weak=getWeakWords(pr),st=tots(pr);
+  useEffect(()=>{setLd(true);analyzeWeak(weak.slice(0,15),{seen:st.s,total:st.t,mastered:st.m,streak:cal.sk}).then(t=>{setText(t);setLd(false);});},[]);
+  return(<div style={{minHeight:"100vh",background:BG,fontFamily:"'EB Garamond',serif",padding:`20px 20px calc(20px + ${SB})`,color:"#FAF3E8"}}>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:"20px"}}><button onClick={onBack} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>← Back</button><div style={{fontSize:"14px",color:"#8B7355",lineHeight:"44px"}}>🎯 AI Coach</div></div>
+    <div style={{...ABOX,maxWidth:"400px",margin:"0 auto"}}><div style={ALAB}>AI COACH · SONNET 4.6</div>
+      {ld?<div style={{color:"#C4956A88",fontSize:"14px",animation:"pulse 1.5s infinite"}}>Analyzing your weak spots...</div>
+      :<div style={{color:"#FAF3E8dd",fontSize:"15px",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{text}</div>}
+    </div>
+    <div style={{marginTop:"20px",fontSize:"12px",color:"#8B735544",textAlign:"center"}}>{weak.length} weak words · {st.m} mastered</div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// TEACH (with enrichment, AI, session timer)
+// ═══════════════════════════════════════════════════
+function Teach({words:wp,trackName,progress,onDone,onExit,ss}){
+  const wr=useRef(wp),words=wr.current;
+  const[idx,setIdx]=useState(0),[flip,setFlip]=useState(false);
+  const[ai,setAi]=useState(""),[aiL,setAiL]=useState(false),[aiMode,setAiMode]=useState("");
+  const cur=words[idx];if(!cur)return null;
+  const k=`${cur.t}_${cur.i}`,root=RMAP[k],pair=PMAP[k],prefix=PREFIXES[k];
+  const pairW=pair?wByKey(pair):null;
+  const st=ws(progress,cur.t,cur.i);
+  const next=()=>{setFlip(false);setAi("");setAiMode("");if(idx+1>=words.length)onDone();else setIdx(idx+1);};
+  const doAI=(mode,prompt)=>{setAiL(true);setAi("");setAiMode(mode);
+    const cacheable=mode==="use"||mode==="why";
+    const fn=cacheable?askAICached(cur.w.h,mode,prompt):askAI(prompt);
+    fn.then(t=>{setAi(t);setAiL(false);});};
+
+  return(<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+    <div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px",alignItems:"center"}}><button onClick={onExit} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>✕</button><div style={{display:"flex",alignItems:"center",gap:"8px"}}>{ss&&<SessionTimer startTime={ss}/>}<span style={{fontSize:"12px",color:"#8B7355"}}>📚 {idx+1}/{words.length}</span></div></div>
+    {/* Daily briefing — shows only on first word */}
+    {idx===0&&<DailyBriefInline progress={progress}/>}
+    <div style={{textAlign:"center",padding:"0 20px 8px"}}><div style={{fontSize:"13px",color:"#8B7355"}}>{trackName} · Study → then test</div></div>
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px",overflow:"auto",paddingBottom:"20px"}}>
+      <div style={{display:"flex",gap:"4px",justifyContent:"center",flexWrap:"wrap",maxWidth:"280px",marginBottom:"16px"}}>{words.map((_,i)=><div key={i} style={{width:"8px",height:"8px",borderRadius:"50%",background:i<idx?"#6B8E7B":i===idx?"#C4956A":"#D4B89644"}}/>)}</div>
+      <div key={idx} style={{...CARD,animation:"fadeUp 0.3s ease"}}>
+        <div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"10px"}}>{cur.w.c}</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"}}>
+          <div style={{fontSize:"48px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.2}}>{cur.w.h}</div>
+          <button onClick={(e)=>{e.stopPropagation();speak(cur.w.h);}} style={{background:"none",border:"none",fontSize:"20px",color:"#C4956A",padding:"4px",minHeight:"36px",cursor:"pointer",opacity:0.6}}>🔊</button>
+        </div>
+        <div style={{fontSize:"16px",color:"#8B7355",marginTop:"8px",fontStyle:"italic"}}>{cur.w.t}</div>
+        {!flip?<button onClick={()=>setFlip(true)} style={{marginTop:"24px",padding:"14px 36px",borderRadius:"12px",border:"2px solid #C4956A",background:"transparent",color:"#C4956A",fontSize:"17px",minHeight:"52px"}}>Show Meaning</button>
+        :<div style={{marginTop:"16px",animation:"fadeUp 0.25s ease"}}>
+          <div style={{width:"50%",height:"1px",background:"#D4B89633",margin:"0 auto 14px"}}/>
+          <div style={{fontSize:"26px",color:"#3D2B1F",fontWeight:600}}>{cur.w.e}</div>
+          <div style={{fontSize:"14px",color:"#8B7355",marginTop:"8px"}}>No nekudot: <span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"22px",color:"#3D2B1F"}}>{stripN(cur.w.h)}</span></div>
+          {/* Enrichment */}
+          <div style={{marginTop:"16px",textAlign:"left"}}>
+            {prefix&&<div style={{padding:"10px 12px",borderRadius:"8px",background:"rgba(107,142,123,0.08)",border:"1px solid rgba(107,142,123,0.15)",marginBottom:"8px"}}>
+              <div style={{fontSize:"10px",color:"#6B8E7B",letterSpacing:"1.5px",marginBottom:"4px"}}>🔤 PREFIX BREAKDOWN</div>
+              <div style={{fontSize:"15px",color:"#3D2B1F"}}>{prefix.map((p,i)=><span key={i}>{i>0?" + ":""}<strong>{p.p}</strong> <span style={{color:"#8B7355"}}>{"("+p.m+")"}</span></span>)}</div>
+            </div>}
+            {root&&root.rel.length>0&&<div style={{padding:"10px 12px",borderRadius:"8px",background:"rgba(196,149,106,0.06)",border:"1px solid rgba(196,149,106,0.12)",marginBottom:"8px"}}>
+              <div style={{fontSize:"10px",color:"#C4956A",letterSpacing:"1.5px",marginBottom:"4px"}}>🌱 SHORESH: {root.sh}</div>
+              <div style={{fontSize:"13px",color:"#3D2B1F"}}>{root.rel.map(rk=>{const w=wByKey(rk);return w?<span key={rk} style={{marginRight:"10px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif"}}>{w.h}</span> = {w.e}</span>:null;})}</div>
+            </div>}
+            {pairW&&<div style={{padding:"10px 12px",borderRadius:"8px",background:"rgba(212,114,106,0.06)",border:"1px solid rgba(212,114,106,0.12)",marginBottom:"8px"}}>
+              <div style={{fontSize:"10px",color:"#D4726A",letterSpacing:"1.5px",marginBottom:"4px"}}>⚡ OPPOSITE</div>
+              <div style={{fontSize:"15px",color:"#3D2B1F"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif"}}>{pairW.h}</span> ({pairW.t}) = <strong>{pairW.e}</strong></div>
+            </div>}
+          </div>
+          {/* AI buttons */}
+          <div style={{display:"flex",gap:"6px",flexWrap:"wrap",justifyContent:"center",marginTop:"12px"}}>
+            <button onClick={()=>doAI("use",`Show how "${cur.w.h}" (${cur.w.t}, "${cur.w.e}") appears in a real Gemara context. Give the phrase, transliteration, and meaning. 2 sentences.`)} disabled={aiL} style={ABTN}>📖 In real Gemara</button>
+            <button onClick={()=>doAI("why",`Explain WHY the Gemara uses "${cur.w.h}" (${cur.w.t}, "${cur.w.e}") — what role does it play in the flow of a sugya? When a talmid sees this word, what should they expect next? 2-3 sentences.`)} disabled={aiL} style={ABTN}>❓ Why this word?</button>
+          </div>
+          {(ai||aiL)&&<div style={{marginTop:"12px",...ABOX}}><div style={ALAB}>{aiMode==="why"?"WHY THIS WORD":"AI CHAVRUSA"}</div>{aiL?<div style={{color:"#C4956A88",fontSize:"14px",animation:"pulse 1.5s infinite"}}>Thinking...</div>:<div style={{color:"#FAF3E8ee",fontSize:"14px",lineHeight:1.7}}>{ai}</div>}</div>}
+          <button onClick={next} style={{marginTop:"16px",padding:"16px 40px",borderRadius:"14px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"17px",minHeight:"52px",width:"100%"}}>{idx+1<words.length?"Got It → Next":"Got It ✓"}</button>
+        </div>}
+      </div>
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// TEST (scroll fix: card pinned, smarter answer feedback)
+// ═══════════════════════════════════════════════════
+function Test({words:wp,progress,onAns,onDone,showNek}){
+  const wr=useRef(wp),words=wr.current;
+  const[idx,setIdx]=useState(0),[inp,setInp]=useState(""),[fb,setFb]=useState(null);
+  const[ai,setAi]=useState(""),[aiL,setAiL]=useState(false);const ref=useRef(null);
+  // Always Hebrew → English
+  useEffect(()=>{if(ref.current&&!fb)setTimeout(()=>{ref.current?.focus();ref.current?.scrollIntoView({behavior:'smooth',block:'center'});},250);},[idx,fb]);
+  const cur=words[idx];if(!cur)return null;
+  const sc=ws(progress,cur.t,cur.i),useN=showNek(sc.lv),heb=useN?cur.w.h:stripN(cur.w.h);
+  const sub=()=>{if(!inp.trim())return;const r=fuzzy(inp,cur.w.e);const ok=r!=="wrong";onAns(cur.t,cur.i,ok);setFb(r);
+    if(r==="close"){askAI(`The student typed "${inp}" for ${cur.w.h} (${cur.w.t}). The full answer is "${cur.w.e}". They were close. In ONE sentence, explain the nuance they should know. Include Hebrew with nekudot.`).then(t=>setAi(t));}
+  };
+  const next=()=>{setInp("");setFb(null);setAi("");if(idx+1>=words.length)onDone();else setIdx(idx+1);};
+  const onKey=e=>{if(e.key==="Enter"){if(fb)next();else sub();}};
+  const hint=async()=>{setAiL(true);setAi("");const t=await askAI(`HINT for "${cur.w.h}" (${cur.w.t}). Answer is "${cur.w.e}" — do NOT reveal it. One sentence clue.`);setAi(t);setAiL(false);};
+  const mnem=async()=>{setAiL(true);setAi("");const t=await askAI(`Memory trick for "${cur.w.h}" (${cur.w.t}) = "${cur.w.e}". Creative wordplay/sounds-like. 1-2 sentences. Include Hebrew with nekudot.`);setAi(t);setAiL(false);};
+  const fc={exact:{bg:"#D4EDDA",bd:"#6B8E7B",tx:"#2D5F3F",l:"✓ Correct!"},close:{bg:"#FFF3CD",bd:"#C4956A",tx:"#6B5A2E",l:"✓ Basically correct"},wrong:{bg:"#F8D7DA",bd:"#D4726A",tx:"#7A2B2B",l:"✗ Not quite"}};
+
+  // SAMSUNG FIX: No position:fixed or sticky. Everything in normal document flow.
+  // Input uses scrollIntoView on focus so keyboard never hides it.
+  return(<div style={{flex:1,padding:"0 20px 20px",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+    <div style={{display:"flex",gap:"4px",justifyContent:"center",flexWrap:"wrap",maxWidth:"280px",margin:"0 auto 8px"}}>{words.map((_,i)=><div key={i} style={{width:"8px",height:"8px",borderRadius:"50%",background:i<idx?"#6B8E7B":i===idx?"#C4956A":"#D4B89644"}}/>)}</div>
+    {!useN&&<div style={{fontSize:"11px",color:"#C4956A",letterSpacing:"1.5px",textTransform:"uppercase",textAlign:"center",marginBottom:"6px"}}>⚡ NO NEKUDOT</div>}
+    <div style={{...CARD,padding:"20px 16px",marginBottom:"12px"}}>
+      <div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"4px"}}>{cur.w.c} · {idx+1}/{words.length}</div>
+      <div style={{fontSize:"40px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.2}}>{heb}</div>
+      {useN&&<div style={{fontSize:"14px",color:"#8B7355",marginTop:"4px",fontStyle:"italic"}}>{cur.w.t}</div>}
+    </div>
+    {(ai||aiL)&&<div style={{marginBottom:"12px",...ABOX}}><div style={ALAB}>AI CHAVRUSA</div>{aiL?<div style={{color:"#C4956A88",fontSize:"14px",animation:"pulse 1.5s infinite"}}>Thinking...</div>:<div style={{color:"#FAF3E8ee",fontSize:"14px",lineHeight:1.7}}>{ai}</div>}</div>}
+    {!fb?<div style={{maxWidth:"400px",margin:"0 auto",width:"100%"}}><div style={{display:"flex",gap:"8px"}}><input ref={ref} type="text" value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={onKey} placeholder="Type English meaning..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" style={{flex:1,padding:"12px 14px",borderRadius:"12px",border:"2px solid #D4B896",background:"#FFF",fontSize:"17px",color:"#3D2B1F"}} onFocus={()=>setTimeout(()=>ref.current?.scrollIntoView({behavior:'smooth',block:'center'}),300)}/><button onClick={sub} style={{padding:"12px 18px",borderRadius:"12px",background:inp.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89633",color:"white",fontSize:"16px",minWidth:"64px",minHeight:"48px"}}>Go</button></div><button onClick={hint} disabled={aiL} style={{display:"block",margin:"8px auto 0",padding:"6px 14px",background:"none",color:"#B8A08077",fontSize:"12px",minHeight:"32px"}}>💡 Hint</button></div>
+    :<div style={{maxWidth:"400px",margin:"0 auto",width:"100%"}}><div style={{background:fc[fb].bg,border:`2px solid ${fc[fb].bd}`,borderRadius:"12px",padding:"10px 14px",textAlign:"center",marginBottom:"6px"}}><div style={{fontSize:"15px",fontWeight:600,color:fc[fb].tx}}>{fc[fb].l}{fb==="close"&&<span style={{fontWeight:400,fontSize:"13px"}}> — full: {cur.w.e}</span>}</div><div style={{fontSize:"14px",color:"#3D2B1F",marginTop:"4px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"20px"}}>{cur.w.h}</span> = <strong>{cur.w.e}</strong></div>{fb==="wrong"&&<button onClick={mnem} disabled={aiL} style={{marginTop:"8px",...ABTN,fontSize:"12px"}}>🧠 Help me remember</button>}</div>{ai&&fb==="close"&&<div style={{margin:"0 auto 6px",...ABOX,padding:"8px 12px"}}><div style={{color:"#FAF3E8dd",fontSize:"13px",lineHeight:1.6}}>{ai}</div></div>}<button onClick={next} style={{width:"100%",padding:"12px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"48px"}}>{idx+1<words.length?"Next →":"Complete ✓"}</button></div>}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// FILL-IN-THE-BLANK
+// ═══════════════════════════════════════════════════
+function FillBlank({blanks,progress,onAns,onDone,onSkip,ss}){
+  const[idx,setIdx]=useState(0),[inp,setInp]=useState(""),[fb,setFb]=useState(null);const ref=useRef(null);
+  useEffect(()=>{if(ref.current&&!fb)setTimeout(()=>{ref.current?.focus();ref.current?.scrollIntoView({behavior:'smooth',block:'center'});},250);},[idx,fb]);
+  const cur=blanks[idx];if(!cur)return null;
+  const bw=blankWord(cur.ak);
+  // Build full phrase with target word highlighted
+  const phrase=cur.ph.replace(/_+/g,bw.w.h);
+  const sub=()=>{if(!inp.trim())return;const r=fuzzy(inp,bw.w.e);onAns(bw.t,bw.i,r!=="wrong");setFb(r);};
+  const next=()=>{setInp("");setFb(null);if(idx+1>=blanks.length)onDone();else setIdx(idx+1);};
+  const onKey=e=>{if(e.key==="Enter"){if(fb)next();else sub();}};
+  const fc={exact:{bg:"#D4EDDA",bd:"#6B8E7B",tx:"#2D5F3F",l:"✓ Correct!"},close:{bg:"#FFF3CD",bd:"#C4956A",tx:"#6B5A2E",l:"✓ Close enough"},wrong:{bg:"#F8D7DA",bd:"#D4726A",tx:"#7A2B2B",l:"✗ Not quite"}};
+  // Highlight the target word in the phrase
+  const parts=phrase.split(bw.w.h);
+  return(<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+    <div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px"}}><button onClick={onSkip} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>Skip</button><div style={{display:"flex",alignItems:"center",gap:"8px"}}>{ss&&<SessionTimer startTime={ss}/>}<span style={{fontSize:"12px",color:"#8B7355"}}>📝 In Context · {idx+1}/{blanks.length}</span></div></div>
+    <div style={{flex:1,padding:"0 20px",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div style={{...CARD}}>
+        <div style={{fontSize:"10px",color:"#B8A080",letterSpacing:"2px",marginBottom:"12px"}}>WHAT DOES THE HIGHLIGHTED WORD MEAN?</div>
+        <div style={{fontSize:"24px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.5,direction:"rtl"}}>
+          {parts.map((p,i)=><React.Fragment key={i}>{i>0&&<span style={{background:"linear-gradient(135deg,rgba(196,149,106,0.25),rgba(196,149,106,0.15))",padding:"2px 6px",borderRadius:"6px",border:"1.5px solid #C4956A",color:"#8B4513",fontWeight:700}}>{bw.w.h}</span>}{p}</React.Fragment>)}
+        </div>
+        <div style={{fontSize:"13px",color:"#8B7355",marginTop:"10px",fontStyle:"italic"}}>{cur.hint}</div>
+      </div>
+      {/* Input in normal flow */}
+      <div style={{marginTop:"16px",maxWidth:"400px",margin:"16px auto 0",width:"100%"}}>
+        {!fb?<div><div style={{display:"flex",gap:"8px"}}><input ref={ref} type="text" value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={onKey} placeholder="Type English meaning..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" style={{flex:1,padding:"12px 14px",borderRadius:"12px",border:"2px solid #D4B896",background:"#FFF",fontSize:"17px",color:"#3D2B1F"}} onFocus={()=>setTimeout(()=>ref.current?.scrollIntoView({behavior:'smooth',block:'center'}),300)}/><button onClick={sub} style={{padding:"12px 18px",borderRadius:"12px",background:inp.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89633",color:"white",fontSize:"16px",minWidth:"64px",minHeight:"48px"}}>Go</button></div></div>
+        :<div><div style={{background:fc[fb].bg,border:`2px solid ${fc[fb].bd}`,borderRadius:"12px",padding:"10px 14px",textAlign:"center",marginBottom:"6px"}}><div style={{fontSize:"15px",fontWeight:600,color:fc[fb].tx}}>{fc[fb].l}</div><div style={{fontSize:"14px",color:"#3D2B1F",marginTop:"4px"}}><span style={{fontFamily:"'Frank Ruhl Libre',serif",fontSize:"20px"}}>{bw.w.h}</span> = <strong>{bw.w.e}</strong></div></div><button onClick={next} style={{width:"100%",padding:"12px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"48px"}}>{idx+1<blanks.length?"Next →":"Done ✓"}</button></div>}
+      </div>
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// BOSS ROUND
+// ═══════════════════════════════════════════════════
+function Boss({onDone}){
+  const[li,setLi]=useState(Math.floor(Math.random()*LINES.length));
+  const[rev,setRev]=useState({});
+  const[allDone,setAllDone]=useState(false);
+  const line=LINES[li%LINES.length];
+  const toggle=i=>{const nr={...rev,[i]:true};setRev(nr);if(Object.keys(nr).length>=line.parts.length)setAllDone(true);};
+  const nextLine=()=>{setRev({});setAllDone(false);setLi(l=>(l+1)%LINES.length);};
+  const[linesDone,setLinesDone]=useState(0);
+  return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px",overflow:"auto"}}>
+    <div style={{fontSize:"13px",color:"#8B7355",marginBottom:"16px"}}>Line {linesDone+1}/3</div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:"8px",justifyContent:"center",maxWidth:"360px",marginBottom:"24px"}}>
+      {line.parts.map((p,i)=><div key={i} onClick={()=>toggle(i)} style={{padding:"10px 14px",borderRadius:"10px",border:"2px solid "+(rev[i]?"#6B8E7B":"#D4B896"),background:rev[i]?"linear-gradient(145deg,#D4EDDA,#C4E8D0)":"linear-gradient(145deg,#FFFFFF,#FAF3E8)",cursor:"pointer",textAlign:"center",minWidth:"60px",transition:"all 0.2s"}}>
+        <div style={{fontSize:"22px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F"}}>{stripN(p.h)}</div>
+        {rev[i]&&<div style={{fontSize:"12px",color:"#6B8E7B",marginTop:"2px",animation:"fadeUp 0.2s ease"}}>{p.e}</div>}
+      </div>)}
+    </div>
+    {allDone&&<div style={{width:"100%",maxWidth:"360px",animation:"slideUp 0.3s ease"}}>
+      <div style={{background:"rgba(107,142,123,0.08)",border:"1px solid rgba(107,142,123,0.15)",borderRadius:"12px",padding:"14px",textAlign:"center",marginBottom:"16px"}}>
+        <div style={{fontSize:"12px",color:"#6B8E7B",marginBottom:"4px"}}>Full translation:</div>
+        <div style={{fontSize:"16px",color:"#3D2B1F",lineHeight:1.6}}>{line.full}</div>
+      </div>
+      <button onClick={()=>{if(linesDone>=2)onDone();else{setLinesDone(d=>d+1);nextLine();}}} style={{width:"100%",padding:"14px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"48px"}}>{linesDone>=2?"Done ✓":"Next Line →"}</button>
+    </div>}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// LAINING (advanced translation)
+// ═══════════════════════════════════════════════════
+function Laining({pr,onBack}){
+  const[li,setLi]=useState(0),[inp,setInp]=useState(""),[fb,setFb]=useState(null);
+  const[ai,setAi]=useState(""),[aiL,setAiL]=useState(false);
+  const line=LINES[li%LINES.length];const ref=useRef(null);
+  useEffect(()=>{if(ref.current&&!fb)ref.current.focus();},[li,fb]);
+  const sub=()=>{if(!inp.trim())return;setFb("done");
+    setAiL(true);askAI(`Student tried to translate this Gemara phrase:\n"${line.parts.map(p=>p.h).join(" ")}"\nCorrect translation: "${line.full}"\nStudent wrote: "${inp}"\n\nRate their translation: what did they get right, what did they miss? Be encouraging. 2-3 sentences. Include Hebrew with nekudot.`,
+    "You are a Gemara rebbi evaluating a student's translation attempt. Be warm but honest.",300).then(t=>{setAi(t);setAiL(false);});
+  };
+  const next=()=>{setInp("");setFb(null);setAi("");setLi(li+1);};
+  return(<div style={{minHeight:"100vh",background:LBG,fontFamily:"'EB Garamond',serif",display:"flex",flexDirection:"column"}}>
+    <div style={{display:"flex",justifyContent:"space-between",padding:"14px 20px"}}><button onClick={onBack} style={{background:"none",color:"#C4956A",fontSize:"14px",padding:"4px 8px",minHeight:"44px"}}>← Back</button><div style={{fontSize:"12px",color:"#8B7355"}}>📜 Laining · Line {(li%LINES.length)+1}</div></div>
+    <div style={{textAlign:"center",padding:"0 20px 8px"}}><div style={{fontSize:"13px",color:"#8B7355"}}>Translate the full phrase</div></div>
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px",overflow:"auto"}}>
+      <div style={{...CARD}}><div style={{fontSize:"26px",fontFamily:"'Frank Ruhl Libre',serif",color:"#3D2B1F",lineHeight:1.5,direction:"rtl"}}>{line.parts.map(p=>stripN(p.h)).join(" ")}</div></div>
+      {!fb?<div style={{width:"100%",maxWidth:"360px",marginTop:"16px"}}>
+        <textarea ref={ref} value={inp} onChange={e=>setInp(e.target.value)} placeholder="Type the full translation..." rows={3} style={{width:"100%",padding:"14px",borderRadius:"12px",border:"2px solid #D4B896",background:"#FFF",fontSize:"16px",color:"#3D2B1F",resize:"none",lineHeight:1.6}}/>
+        <button onClick={sub} disabled={!inp.trim()} style={{marginTop:"10px",width:"100%",padding:"14px",borderRadius:"12px",background:inp.trim()?"linear-gradient(135deg,#C4956A,#A0764E)":"#D4B89633",color:"white",fontSize:"16px",minHeight:"52px"}}>Check Translation</button>
+      </div>
+      :<div style={{width:"100%",maxWidth:"360px",marginTop:"16px",animation:"slideUp 0.3s ease"}}>
+        <div style={{background:"#D4EDDA",border:"2px solid #6B8E7B",borderRadius:"12px",padding:"14px",marginBottom:"10px"}}><div style={{fontSize:"12px",color:"#6B8E7B",marginBottom:"4px"}}>Correct translation:</div><div style={{fontSize:"15px",color:"#2D5F3F",lineHeight:1.6}}>{line.full}</div></div>
+        {(ai||aiL)&&<div style={{...ABOX,marginBottom:"10px"}}><div style={ALAB}>REBBI FEEDBACK</div>{aiL?<div style={{color:"#C4956A88",fontSize:"14px",animation:"pulse 1.5s infinite"}}>Evaluating...</div>:<div style={{color:"#FAF3E8ee",fontSize:"14px",lineHeight:1.7}}>{ai}</div>}</div>}
+        <button onClick={next} style={{width:"100%",padding:"14px",borderRadius:"12px",background:"linear-gradient(135deg,#C4956A,#A0764E)",color:"white",fontSize:"16px",minHeight:"52px"}}>Next Line →</button>
+      </div>}
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// WORD REVIEW (in-session: quick review of today's words in context)
+// ═══════════════════════════════════════════════════
+function WordReview({pr,onDone}){
+  const tw=todayWords(pr);
+  const[revealed,setRevealed]=useState({});
+  const toggle=k=>setRevealed(r=>({...r,[k]:!r[k]}));
+  const allRev=Object.keys(revealed).length>=Math.min(tw.length,5);
+  if(tw.length===0){onDone();return null;}
+  return(<div style={{minHeight:"100vh",background:BG,fontFamily:"'EB Garamond',serif",padding:`20px 20px calc(20px + ${SB})`,color:"#FAF3E8"}}>
+    <div style={{textAlign:"center",marginBottom:"16px"}}>
+      <div style={{fontSize:"13px",color:"#C4956A",letterSpacing:"1.5px",marginBottom:"4px"}}>📋 QUICK REVIEW</div>
+      <div style={{fontSize:"16px",color:"#FAF3E8cc"}}>Tap to reveal — scan your words in context</div>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:"8px",maxWidth:"400px",margin:"0 auto"}}>
+      {tw.slice(0,12).map(({w,t,i,s})=>{const k=t+"_"+i;const isOpen=revealed[k];const lines=WORD_LINES[k]||[];
+        return(<div key={k} onClick={()=>toggle(k)} style={{padding:"12px 14px",borderRadius:"10px",background:isOpen?"rgba(107,142,123,0.08)":"rgba(255,255,255,0.03)",border:`1px solid ${isOpen?"rgba(107,142,123,0.2)":"rgba(255,255,255,0.05)"}`,cursor:"pointer",minHeight:"52px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:"22px",fontFamily:"'Frank Ruhl Libre',serif"}}>{w.h}</span>
+            <span style={{fontSize:"13px",color:isOpen?"#6B8E7B":"#8B735566",fontWeight:isOpen?600:400}}>{isOpen?w.e:"tap to reveal"}</span>
+          </div>
+          {isOpen&&<div style={{fontSize:"12px",color:"#C4956Acc",marginTop:"4px"}}>{w.t} = {w.e}</div>}
+        </div>);
+      })}
+    </div>
+    <div style={{textAlign:"center",marginTop:"20px"}}>
+      <button onClick={onDone} style={{padding:"14px 40px",borderRadius:"14px",background:allRev?"linear-gradient(135deg,#C4956A,#A0764E)":"rgba(196,149,106,0.2)",color:"white",fontSize:"16px",fontFamily:"'EB Garamond',serif",minHeight:"52px",border:"none"}}>{allRev?"Continue →":`Tap at least ${Math.min(tw.length,5)} words`}</button>
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════
+// SESSION DEBRIEF
+// ═══════════════════════════════════════════════════
+function SessionDebrief({sr,progress}){
+  const[text,setText]=useState(""),[ld,setLd]=useState(false),[open,setOpen]=useState(false);
+  const go=()=>{if(text)return setOpen(!open);setOpen(true);setLd(true);
+    const weak=getWeakWords(progress).slice(0,8),t=tots(progress);
+    askAI(`Session just ended. Results: ${sr.nw} new words learned, ${sr.lv} words leveled up. Overall: ${t.s}/${t.t} seen, ${t.m} mastered. Current weak spots: ${weak.map(w=>`${w.hebrew} ${w.transliteration}="${w.english}"(lv${w.level})`).join(", ")}. Give a 2-3 sentence debrief: what went well, what pattern to watch, one specific tip for next session. Include Hebrew with nekudot when mentioning any word.`,
+    "You are a Gemara rebbi giving an end-of-session debrief. Warm, concise, actionable.",250).then(t=>{setText(t);setLd(false);});
+  };
+  return(<div style={{width:"100%",maxWidth:"300px",marginTop:"16px"}}>
+    <button onClick={go} style={{width:"100%",padding:"10px",borderRadius:"10px",border:"1px solid rgba(196,149,106,0.15)",background:"transparent",color:"#C4956A66",fontSize:"13px",minHeight:"40px"}}>📋 Session Debrief</button>
+    {open&&<div style={{marginTop:"10px",...ABOX}}><div style={ALAB}>SESSION DEBRIEF</div>{ld?<div style={{color:"#C4956A88",fontSize:"14px",animation:"pulse 1.5s infinite"}}>Reviewing your session...</div>:<div style={{color:"#FAF3E8dd",fontSize:"14px",lineHeight:1.7}}>{text}</div>}</div>}
+  </div>);
+}
+
+ReactDOM.render(<App/>,document.getElementById('root'));
+</script>
+</body>
+</html>
