@@ -1,0 +1,13 @@
+{
+  "outputDirectory": "public",
+  "crons": [
+    {
+      "path": "/api/push",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/push",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
